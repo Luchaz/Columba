@@ -112,8 +112,8 @@ export class ModernYouTubeExtractor extends BaseExtractor {
   async handle(query: string, context: any) {
     const cleanUrl = query.trim();
 
-    // 1. YouTube Playlist URL
-    if (/[?&]list=([a-zA-Z0-9_-]+)/i.test(cleanUrl)) {
+    // 1. YouTube Playlist URL (abaikan Radio/Mix playlist bertipe list=RD... karena di-generate on-the-fly oleh YouTube)
+    if (/[?&]list=([a-zA-Z0-9_-]+)/i.test(cleanUrl) && !/[?&]list=RD/i.test(cleanUrl)) {
       try {
         const playlistInfo = await YouTube.getPlaylist(cleanUrl, { limit: 100 });
         if (playlistInfo && playlistInfo.videos?.length) {
@@ -158,10 +158,15 @@ export class ModernYouTubeExtractor extends BaseExtractor {
       }
     }
 
-    // 2. Single YouTube Video URL
+    // 2. Single YouTube Video URL (bersihkan parameter playlist mix agar tidak mengganggu metadata)
     if (/^(https?:\/\/)?(www\.|m\.|music\.)?(youtube\.com|youtu\.be)\/.+$/i.test(cleanUrl)) {
       try {
-        const info = await ytdl.getInfo(cleanUrl);
+        const sanitizedVideoUrl = cleanUrl
+          .replace(/([?&])list=RD[^&]+/i, '')
+          .replace(/([?&])start_radio=[^&]+/i, '')
+          .replace(/[?&]$/, '');
+
+        const info = await ytdl.getInfo(sanitizedVideoUrl);
         const details = info.videoDetails;
         const durationSec = Number(details.lengthSeconds) || 0;
 
@@ -169,7 +174,7 @@ export class ModernYouTubeExtractor extends BaseExtractor {
           title: details.title,
           description: details.description || details.title,
           author: details.author?.name || 'YouTube',
-          url: cleanUrl,
+          url: sanitizedVideoUrl,
           thumbnail: details.thumbnails?.[details.thumbnails.length - 1]?.url || details.thumbnails?.[0]?.url || '',
           duration: Util.buildTimeCode(Util.parseMS(durationSec * 1000)),
           views: Number(details.viewCount) || 0,
@@ -212,11 +217,15 @@ export class ModernYouTubeExtractor extends BaseExtractor {
   }
 
   async stream(track: Track): Promise<Readable> {
-    return (await ytdl.download(track.url, {
+    const streamUrl = track.url
+      .replace(/([?&])list=RD[^&]+/i, '')
+      .replace(/([?&])start_radio=[^&]+/i, '')
+      .replace(/[?&]$/, '');
+
+    return (await ytdl.download(streamUrl, {
       quality: 'highestaudio',
       filter: { hasAudio: true, hasVideo: false },
-      highWaterMark: 1024 * 1024 * 32, // Buffer besar 32 MB agar audio tidak tersendat di cloud
-      chunkSize: 1024 * 1024 * 5, // 5 MB per request untuk menghindari throttling YouTube
+      highWaterMark: 1024 * 1024 * 4, // Buffer 4 MB untuk pengiriman stream instan tanpa delay
     })) as unknown as Readable;
   }
 
@@ -245,8 +254,7 @@ export class ModernYouTubeExtractor extends BaseExtractor {
       return (await ytdl.download(bestVideo.url, {
         quality: 'highestaudio',
         filter: { hasAudio: true, hasVideo: false },
-        highWaterMark: 1024 * 1024 * 32, // Buffer besar 32 MB
-        chunkSize: 1024 * 1024 * 5, // 5 MB per request
+        highWaterMark: 1024 * 1024 * 4,
       })) as unknown as Readable;
     } catch (error) {
       this.context.player.debug(`ModernYouTubeExtractor bridge error: ${error}`);

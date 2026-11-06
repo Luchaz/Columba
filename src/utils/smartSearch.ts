@@ -64,8 +64,13 @@ export async function smartSearch(
 
   // 1. Jika query adalah URL YouTube langsung -> coba cari langsung dengan YouTube Extractor
   if (isYouTubeUrl(query)) {
+    const sanitizedUrl = query
+      .replace(/([?&])list=RD[^&]+/i, '')
+      .replace(/([?&])start_radio=[^&]+/i, '')
+      .replace(/[?&]$/, '');
+
     try {
-      const ytResult = await player.search(query, { requestedBy });
+      const ytResult = await player.search(sanitizedUrl, { requestedBy });
       if (ytResult.hasTracks()) {
         return ytResult;
       }
@@ -73,7 +78,7 @@ export async function smartSearch(
       // Fallback ke oEmbed jika direct query bermasalah
     }
 
-    const ytMeta = await fetchYouTubeOEmbed(query);
+    const ytMeta = await fetchYouTubeOEmbed(sanitizedUrl);
     if (ytMeta) {
       const cleanedTitle = cleanTrackTitle(ytMeta.title);
       const cleanAuthor = ytMeta.author_name.replace(/\s*(- Topic|VEVO|Official)$/i, '').trim();
