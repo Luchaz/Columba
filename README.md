@@ -19,7 +19,7 @@
 **Columba** adalah bot Discord serbaguna yang dibuat untuk nemenin perkuliahan, urusan tesis, dan dengerin musik bareng di server Discord **Magister Sistem Informasi ITS**.
 
 * 🎓 **Akademik & Tesis** — Jadwal kuliah mingguan, panduan & berkas tesis, kalender akademik ITS, direktori dosen, dan profil teman seangkatan.
-* 🎵 **Pemutar Musik (24/7)** — Pemutar audio 48kHz dengan dukungan Spotify & YouTube, lirik lagu, kontrol antrean, dan kompatibel penuh dengan protokol Discord DAVE E2EE.
+* 🎵 **Pemutar Musik (24/7)** — Pemutar audio 48kHz dengan dual-engine (YouTube PO Token + instant SoundCloud fallback), Spotify, lirik lagu, kontrol antrean, dan kompatibel penuh dengan protokol Discord DAVE E2EE.
 
 ---
 
@@ -47,10 +47,9 @@
 | `/tesis [topik]` | Format proposal tesis, info dewan penguji & link portal UGDSI |
 | `/kalender` | Agenda kalender akademik pascasarjana ITS & jadwal semester |
 | `/dosen [nama]` | Profil dosen, riwayat pendidikan S1-S3, fokus riset & email |
-| `/mahasiswa [nama]` | Direktori mahasiswa seangkatan, asal S1, dan topik Tugas Akhir |
-| `/profil [lihat/set]` | Lihat profil teman atau perbarui data & bio akunmu sendiri |
+| `/mahasiswa [query]` | Direktori mahasiswa seangkatan, NRP, pembimbing, lab & asal S1 |
+| `/profil [lihat/set]` | Lihat profil teman atau perbarui keahlian & rencana topik tesis |
 | `/lab [kode]` | Profil 5 lab riset departemen (RDIB, MSI, SE, IKTI, ADDI) |
-| `/ultah [hari]` | Pengingat hari ulang tahun dosen & mahasiswa terdekat |
 | `/help` | Menu panduan interaktif seluruh fitur bot |
 
 ---
