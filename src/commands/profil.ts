@@ -173,12 +173,11 @@ export const command: BotCommand = {
       }
 
       const updated = studentManager.getByNrp(nrp)!;
-      const maskedNrp = updated.nrp.length > 4 ? `${updated.nrp.slice(0, 6)}****` : updated.nrp;
       await interaction.reply({
         embeds: [
           new EmbedBuilder()
             .setColor(BRAND_COLORS.MERPATI_DARK)
-            .setDescription(`Profil untuk **${updated.name}** (\`${maskedNrp}\`) berhasil diperbarui dan ditautkan ke akun Discord-mu.`),
+            .setDescription(`Profil untuk **${updated.name}** (\`${updated.nrp}\`) berhasil diperbarui dan ditautkan ke akun Discord-mu.`),
           buildStudentDetailEmbed(updated),
         ],
       });

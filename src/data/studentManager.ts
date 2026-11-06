@@ -128,6 +128,7 @@ class StudentManager {
         s.advisor.toLowerCase().includes(q) ||
         s.lab.toLowerCase() === q ||
         (s.expertise && s.expertise.toLowerCase().includes(q)) ||
+        (s.originS1 && s.originS1.toLowerCase().includes(q)) ||
         (s.thesisTopic && s.thesisTopic.toLowerCase().includes(q))
     );
   }

@@ -13,14 +13,13 @@ import { studentManager } from '../data/studentManager';
 
 export function buildStudentDetailEmbed(student: StudentRecord): EmbedBuilder {
   const lab = LAB_INFOS[student.lab];
-  const maskedNrp = student.nrp.length > 4 ? `${student.nrp.slice(0, 6)}****` : student.nrp;
 
   const embed = new EmbedBuilder()
     .setColor(BRAND_COLORS.MERPATI_DARK)
     .setTitle(student.name)
     .setDescription(
       [
-        `-# NRP: \`${maskedNrp}\` • Magister Sistem Informasi ITS 2026`,
+        `-# NRP: \`${student.nrp}\` • Magister Sistem Informasi ITS 2026`,
         '',
         '### Pembimbing & Laboratorium',
         `• **Dosen Pembimbing:** ${student.advisor}`,
@@ -36,6 +35,9 @@ export function buildStudentDetailEmbed(student: StudentRecord): EmbedBuilder {
         student.thesisTopic
           ? `> ${student.thesisTopic}`
           : '-# Belum diisi. Dapat diperbarui melalui `/profil set`.',
+        '',
+        '### Riwayat Pendidikan',
+        `• **Asal S1:** ${student.originS1 || '-'}`,
       ].join('\n')
     )
     .setFooter({

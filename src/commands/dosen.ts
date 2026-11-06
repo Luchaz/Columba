@@ -95,8 +95,7 @@ export const command: BotCommand = {
         ? students
             .map((s, idx) => {
               const topicStr = s.thesisTopic ? `\n  -# Topik: ${s.thesisTopic}` : '';
-              const maskedNrp = s.nrp.length > 4 ? `${s.nrp.slice(0, 6)}****` : s.nrp;
-              return `\`${idx + 1}.\` **${s.name}** (\`${maskedNrp}\`)${topicStr}`;
+              return `\`${idx + 1}.\` **${s.name}** (\`${s.nrp}\`)${topicStr}`;
             })
             .join('\n')
         : '-# Dosen Pengampu Mata Kuliah Pascasarjana';

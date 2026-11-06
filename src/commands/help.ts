@@ -24,7 +24,7 @@ export const command: BotCommand = {
           '• `/jadwal [hari]` — Jadwal perkuliahan mingguan, ruangan & dosen pengampu',
           '• `/tesis [topik]` — Format proposal tesis, lembar pengesahan & portal UGDSI',
           '• `/kalender` — Kalender akademik pascasarjana ITS & agenda semester',
-          '• `/mahasiswa [query]` — Direktori mahasiswa angkatan 2026, pembimbing & lab riset',
+          '• `/mahasiswa [query]` — Direktori mahasiswa angkatan 2026, asal S1, pembimbing & lab',
           '• `/dosen [nama]` — Profil dosen, gelar lengkap, riwayat pendidikan & bidang riset',
           '• `/lab [kode]` — Informasi 5 laboratorium riset departemen dan anggotanya',
           '• `/profil lihat [query]` — Kartu profil keahlian & rencana topik tesis',
