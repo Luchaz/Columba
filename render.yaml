@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: merpatify-companion-bot
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DEFAULT_VOLUME
+        value: "80"
+      - key: LEAVE_ON_EMPTY_COOLDOWN
+        value: "180000"
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: DISCORD_CLIENT_ID
+        sync: false

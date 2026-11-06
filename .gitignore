@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+package-lock.json.backup
+
+# Production build output
+dist/
+build/
+*.tsbuildinfo
+
+# Sensitive Environment & Secrets (MANDATORY FOR PUBLIC REPO)
+.env
+.env.*
+!.env.example
+*.local
+*.pem
+*.key
+*.cert
+*.pfx
+
+# Local Runtime Data & Profile Overrides
+/data/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Deployment & Hosting Temporary Caches
+.vercel/
+.railway/
+
+# Operating System & Editor Files
+.DS_Store
+Thumbs.db
+.idea/
+*.sublime-project
+*.sublime-workspace
+.history/

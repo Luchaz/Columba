@@ -1,0 +1,47 @@
+{
+  "name": "columba",
+  "version": "1.2.0",
+  "description": "Open-source Discord Companion Bot for Magister Sistem Informasi ITS by Luchaz",
+  "main": "dist/index.js",
+  "scripts": {
+    "postinstall": "node scripts/patch-voip.js",
+    "dev": "tsc --watch --preserveWatchOutput",
+    "build": "node scripts/patch-voip.js && tsc",
+    "start": "node --max-http-header-size=65536 scripts/patch-voip.js && node --max-http-header-size=65536 dist/index.js",
+    "lint": "tsc --noEmit"
+  },
+  "keywords": [
+    "discord-bot",
+    "music-bot",
+    "discord-js-v14",
+    "discord-player",
+    "spotify",
+    "youtube",
+    "typescript"
+  ],
+  "author": "Luchaz (yukheiw)",
+  "license": "MIT",
+  "dependencies": {
+    "@discord-player/extractor": "^7.2.0",
+    "@distube/ytdl-core": "^5.2.1",
+    "@snazzah/davey": "^0.2.0",
+    "discord-api-types": "^0.38.57",
+    "discord-player": "^7.2.0",
+    "discord-player-youtubei": "^1.5.0",
+    "discord-voip": "^7.2.0",
+    "discord.js": "^14.28.1",
+    "dotenv": "^16.4.5",
+    "ffmpeg-static": "^5.2.0",
+    "mediaplex": "^1.0.0",
+    "tweetnacl": "^1.0.3",
+    "undici": "^6.21.0",
+    "youtube-sr": "^4.3.12"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": "22.x"
+  }
+}
