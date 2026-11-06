@@ -5,12 +5,31 @@ import {
   Track,
   Util,
 } from 'discord-player';
-import { Ytdl } from '@distube/ytdl-core';
+import { SoundCloudExtractor } from '@discord-player/extractor';
+import { Ytdl, createPoTokenProvider } from '@distube/ytdl-core';
 import YouTube, { Video } from 'youtube-sr';
 import { Readable } from 'stream';
 import { sanitizeYouTubeUrl } from '../utils/smartSearch';
 
-const ytdl = new Ytdl();
+let ytdlInstance: Ytdl | null = null;
+let poTokenProviderPromise: Promise<any> | null = null;
+
+async function getYtdl(): Promise<Ytdl> {
+  if (ytdlInstance) return ytdlInstance;
+  if (!poTokenProviderPromise) {
+    poTokenProviderPromise = createPoTokenProvider().catch((err) => {
+      console.warn('⚠️ [AudioEngine]: createPoTokenProvider fallback to basic:', err);
+      return null;
+    });
+  }
+  const getPoToken = await poTokenProviderPromise;
+  if (getPoToken) {
+    ytdlInstance = new Ytdl({ getPoToken });
+  } else {
+    ytdlInstance = new Ytdl();
+  }
+  return ytdlInstance;
+}
 
 // Daftar kata kunci yang menandakan bukan lagu studio/versi resmi
 const UNWANTED_KEYWORDS = [
@@ -163,7 +182,7 @@ export class ModernYouTubeExtractor extends BaseExtractor {
     if (/^(https?:\/\/)?(www\.|m\.|music\.)?(youtube\.com|youtu\.be)\/.+$/i.test(cleanUrl)) {
       try {
         const sanitizedVideoUrl = sanitizeYouTubeUrl(cleanUrl);
-
+        const ytdl = await getYtdl();
         const info = await ytdl.getInfo(sanitizedVideoUrl);
         const details = info.videoDetails;
         const durationSec = Number(details.lengthSeconds) || 0;
@@ -214,17 +233,45 @@ export class ModernYouTubeExtractor extends BaseExtractor {
     }
   }
 
-  async stream(track: Track): Promise<Readable> {
+  async stream(track: Track): Promise<Readable | string> {
     const streamUrl = sanitizeYouTubeUrl(track.url);
 
-    return (await ytdl.download(streamUrl, {
-      quality: 'highestaudio',
-      filter: { hasAudio: true, hasVideo: false },
-      highWaterMark: 1024 * 1024 * 4, // Buffer 4 MB untuk pengiriman stream instan tanpa delay
-    })) as unknown as Readable;
+    // 1. Coba stream via YouTube dengan PO Token
+    try {
+      const ytdl = await getYtdl();
+      console.log(`📡 [AudioEngine]: Requesting YouTube stream for "${track.title}"...`);
+      const ytStream = await ytdl.download(streamUrl, {
+        quality: 'highestaudio',
+        filter: { hasAudio: true, hasVideo: false },
+        highWaterMark: 1024 * 1024 * 4,
+      });
+
+      return ytStream as unknown as Readable;
+    } catch (ytErr) {
+      console.warn(`⚠️ [AudioEngine]: YouTube stream issue (${ytErr}). Fallback ke SoundCloud bridge...`);
+    }
+
+    // 2. Fallback instan: SoundCloud Bridge
+    try {
+      const scExt = new SoundCloudExtractor(this.context, {});
+      await scExt.activate();
+      const searchQuery = `${track.author} - ${track.title}`;
+      console.log(`✨ [AudioEngine]: Mencari audio cadangan di SoundCloud: "${searchQuery}"`);
+      const searchRes = await scExt.handle(searchQuery, { requestedBy: track.requestedBy });
+      if (searchRes.tracks.length > 0) {
+        const scTrack = searchRes.tracks[0];
+        console.log(`✅ [AudioEngine]: Menghubungkan ke SoundCloud: "${scTrack.title}" (${scTrack.url})`);
+        const scStream = await scExt.stream(scTrack);
+        return scStream;
+      }
+    } catch (scErr) {
+      console.error(`❌ [AudioEngine]: SoundCloud fallback error:`, scErr);
+    }
+
+    throw new Error(`Tidak dapat memutar audio untuk "${track.title}".`);
   }
 
-  async bridge(track: Track, sourceExtractor?: any): Promise<Readable | null> {
+  async bridge(track: Track, sourceExtractor?: any): Promise<Readable | string | null> {
     try {
       const query = sourceExtractor?.createBridgeQuery
         ? sourceExtractor.createBridgeQuery(track)
@@ -238,22 +285,36 @@ export class ModernYouTubeExtractor extends BaseExtractor {
         track.durationMS
       );
 
-      if (!bestVideo) return null;
+      if (bestVideo) {
+        track.raw = {
+          ...(track.raw || {}),
+          bridgedYoutubeUrl: bestVideo.url,
+          bridgedYoutubeTitle: bestVideo.title,
+        };
 
-      track.raw = {
-        ...(track.raw || {}),
-        bridgedYoutubeUrl: bestVideo.url,
-        bridgedYoutubeTitle: bestVideo.title,
-      };
-
-      return (await ytdl.download(bestVideo.url, {
-        quality: 'highestaudio',
-        filter: { hasAudio: true, hasVideo: false },
-        highWaterMark: 1024 * 1024 * 4,
-      })) as unknown as Readable;
+        const ytdl = await getYtdl();
+        const ytStream = await ytdl.download(bestVideo.url, {
+          quality: 'highestaudio',
+          filter: { hasAudio: true, hasVideo: false },
+          highWaterMark: 1024 * 1024 * 4,
+        });
+        return ytStream as unknown as Readable;
+      }
     } catch (error) {
       this.context.player.debug(`ModernYouTubeExtractor bridge error: ${error}`);
-      return null;
     }
+
+    // Fallback bridging via SoundCloud
+    try {
+      const scExt = new SoundCloudExtractor(this.context, {});
+      await scExt.activate();
+      const searchQuery = `${track.author} - ${track.title}`;
+      const searchRes = await scExt.handle(searchQuery, { requestedBy: track.requestedBy });
+      if (searchRes.tracks.length > 0) {
+        return await scExt.stream(searchRes.tracks[0]);
+      }
+    } catch {}
+
+    return null;
   }
 }

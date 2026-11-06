@@ -43,20 +43,8 @@ export const command: BotCommand = {
         )
         .addStringOption((opt) =>
           opt
-            .setName('ulang_tahun')
-            .setDescription('Tanggal ulang tahun format DD-MM (Contoh: 15-08)')
-            .setRequired(false)
-        )
-        .addStringOption((opt) =>
-          opt
             .setName('topik_tesis')
             .setDescription('Rencana topik atau judul penelitian tesis S2')
-            .setRequired(false)
-        )
-        .addStringOption((opt) =>
-          opt
-            .setName('bio')
-            .setDescription('Catatan, pengalaman kerja, atau Tugas Akhir S1')
             .setRequired(false)
         )
     ),
@@ -128,9 +116,9 @@ export const command: BotCommand = {
                 `Akun Discord ${interaction.user} belum terhubung ke data mahasiswa S2 SI ITS 2026.`,
                 '',
                 'Gunakan perintah berikut untuk menautkan dan melengkapi profilmu:',
-                '`/profil set nrp:<NRP> [keahlian] [ulang_tahun:DD-MM] [topik_tesis] [bio]`',
+                '`/profil set nrp:<NRP> [keahlian] [topik_tesis]`',
                 '',
-                '-# Contoh: `/profil set nrp:6026201001 keahlian:NLP & Machine Learning ulang_tahun:15-08 topik_tesis:Data Intelligence for Smart Healthcare`',
+                '-# Contoh: `/profil set nrp:6026201001 keahlian:NLP & Machine Learning topik_tesis:Data Intelligence for Smart Healthcare`',
               ].join('\n')
             )
             .setFooter({ text: 'Columba • S2 SI ITS Profile' }),
@@ -146,9 +134,7 @@ export const command: BotCommand = {
     if (subcommand === 'set') {
       const nrp = interaction.options.getString('nrp', true).trim();
       const expertise = interaction.options.getString('keahlian');
-      const birthday = interaction.options.getString('ulang_tahun');
       const thesisTopic = interaction.options.getString('topik_tesis');
-      const bio = interaction.options.getString('bio');
 
       const student = studentManager.getByNrp(nrp);
       if (!student) {
@@ -165,52 +151,13 @@ export const command: BotCommand = {
         return;
       }
 
-      // Validasi format ulang tahun jika diisi
-      let formattedBirthday = student.birthday;
-      if (birthday) {
-        const cleanBday = birthday.trim();
-        const bdayRegex = /^(\d{1,2})[-/](\d{1,2})(-(\d{4}))?$/;
-        const match = cleanBday.match(bdayRegex);
-        if (!match) {
-          await interaction.reply({
-            embeds: [
-              new EmbedBuilder()
-                .setColor(BRAND_COLORS.MERPATI_DARK)
-                .setDescription(
-                  'Format tanggal lahir tidak valid. Gunakan format `DD-MM` atau `DD-MM-YYYY` (contoh: `15-08` atau `15-08-1999`).'
-                ),
-            ],
-            ephemeral: true,
-          });
-          return;
-        }
-
-        const day = parseInt(match[1], 10);
-        const month = parseInt(match[2], 10);
-        if (day < 1 || day > 31 || month < 1 || month > 12) {
-          await interaction.reply({
-            embeds: [
-              new EmbedBuilder()
-                .setColor(BRAND_COLORS.MERPATI_DARK)
-                .setDescription('Tanggal atau bulan tidak valid (Hari: 1–31, Bulan: 1–12).'),
-            ],
-            ephemeral: true,
-          });
-          return;
-        }
-
-        formattedBirthday = `${String(day).padStart(2, '0')}-${String(month).padStart(2, '0')}`;
-      }
-
       // Update data
       const updates: Record<string, string | undefined> = {
         discordId: interaction.user.id,
       };
 
       if (expertise !== null && expertise !== undefined) updates.expertise = expertise.trim();
-      if (formattedBirthday) updates.birthday = formattedBirthday;
       if (thesisTopic !== null && thesisTopic !== undefined) updates.thesisTopic = thesisTopic.trim();
-      if (bio !== null && bio !== undefined) updates.bio = bio.trim();
 
       const success = studentManager.updateStudent(nrp, updates);
       if (!success) {
@@ -226,11 +173,12 @@ export const command: BotCommand = {
       }
 
       const updated = studentManager.getByNrp(nrp)!;
+      const maskedNrp = updated.nrp.length > 4 ? `${updated.nrp.slice(0, 6)}****` : updated.nrp;
       await interaction.reply({
         embeds: [
           new EmbedBuilder()
             .setColor(BRAND_COLORS.MERPATI_DARK)
-            .setDescription(`Profil untuk **${updated.name}** (\`${updated.nrp}\`) berhasil diperbarui dan ditautkan ke akun Discord-mu.`),
+            .setDescription(`Profil untuk **${updated.name}** (\`${maskedNrp}\`) berhasil diperbarui dan ditautkan ke akun Discord-mu.`),
           buildStudentDetailEmbed(updated),
         ],
       });

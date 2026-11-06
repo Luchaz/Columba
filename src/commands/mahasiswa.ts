@@ -13,20 +13,21 @@ import { studentManager } from '../data/studentManager';
 
 export function buildStudentDetailEmbed(student: StudentRecord): EmbedBuilder {
   const lab = LAB_INFOS[student.lab];
+  const maskedNrp = student.nrp.length > 4 ? `${student.nrp.slice(0, 6)}****` : student.nrp;
 
   const embed = new EmbedBuilder()
     .setColor(BRAND_COLORS.MERPATI_DARK)
     .setTitle(student.name)
     .setDescription(
       [
-        `-# NRP: \`${student.nrp}\` • Magister Sistem Informasi ITS 2026`,
+        `-# NRP: \`${maskedNrp}\` • Magister Sistem Informasi ITS 2026`,
         '',
         '### Pembimbing & Laboratorium',
         `• **Dosen Pembimbing:** ${student.advisor}`,
         `• **Laboratorium:** Lab ${lab ? lab.name : student.lab} (\`${student.lab}\`)`,
         `• **Fokus Riset Lab:** *${lab ? lab.focus : '-'}*`,
         '',
-        '### Fokus Keahlian',
+        '### Fokus Keahlian & Minat',
         student.expertise
           ? `> ${student.expertise}`
           : '-# Dapat diperbarui melalui `/profil set`.',
@@ -35,11 +36,6 @@ export function buildStudentDetailEmbed(student: StudentRecord): EmbedBuilder {
         student.thesisTopic
           ? `> ${student.thesisTopic}`
           : '-# Belum diisi. Dapat diperbarui melalui `/profil set`.',
-        '',
-        '### Latar Belakang & Pengalaman',
-        `• **Asal S1:** ${student.originS1 || '-'}`,
-        `• **Tanggal Lahir:** ${student.birthday || '-'}`,
-        `• **Catatan / Tugas Akhir S1:** ${student.bio || '-'}`,
       ].join('\n')
     )
     .setFooter({

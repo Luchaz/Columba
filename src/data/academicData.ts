@@ -7,7 +7,6 @@ export interface LecturerProfile {
   role: string;
   expertise: string[];
   education: string[];
-  birthday?: string; // Format DD-MM
   researchFocus: string;
   description: string;
   email?: string;
@@ -442,11 +441,8 @@ export interface StudentRecord {
   advisor: string;
   lab: 'RDIB' | 'MSI' | 'SE' | 'IKTI' | 'ADDI';
   discordId?: string;
-  birthday?: string; // Format: DD-MM
   thesisTopic?: string;
   expertise?: string;
-  bio?: string;
-  originS1?: string;
 }
 
 /**
@@ -461,8 +457,6 @@ export const INITIAL_STUDENTS: StudentRecord[] = [
     advisor: 'Ahmad Muklason',
     lab: 'RDIB',
     expertise: 'Data Engineering & Business Intelligence',
-    bio: 'Data contoh mahasiswa untuk repositori publik Columba.',
-    originS1: 'S1 Sistem Informasi, Institut Teknologi Sepuluh Nopember (ITS)',
   },
   {
     nrp: '5026201002',
@@ -470,7 +464,5 @@ export const INITIAL_STUDENTS: StudentRecord[] = [
     advisor: 'Tony Dwi Susanto',
     lab: 'MSI',
     expertise: 'IT Governance & Enterprise Architecture',
-    bio: 'Data contoh mahasiswa untuk repositori publik Columba.',
-    originS1: 'S1 Sistem Informasi, Institut Teknologi Sepuluh Nopember (ITS)',
   },
 ];

@@ -64,9 +64,7 @@ class StudentManager {
           const parsed = JSON.parse(jsonStr);
           if (parsed && typeof parsed === 'object') {
             for (const [name, val] of Object.entries(parsed)) {
-              if (typeof val === 'string') {
-                if (this.lecturers[name]) (this.lecturers[name] as any).birthday = val;
-              } else if (val && typeof val === 'object') {
+              if (val && typeof val === 'object') {
                 this.lecturers[name] = val as LecturerProfile;
               }
             }
@@ -130,7 +128,7 @@ class StudentManager {
         s.advisor.toLowerCase().includes(q) ||
         s.lab.toLowerCase() === q ||
         (s.expertise && s.expertise.toLowerCase().includes(q)) ||
-        (s.originS1 && s.originS1.toLowerCase().includes(q))
+        (s.thesisTopic && s.thesisTopic.toLowerCase().includes(q))
     );
   }
 
@@ -196,11 +194,9 @@ class StudentManager {
 
       const overrides: Record<string, Partial<StudentRecord>> = {};
       for (const s of this.students) {
-        if (s.birthday || s.thesisTopic || s.bio || s.discordId || s.expertise) {
+        if (s.thesisTopic || s.discordId || s.expertise) {
           overrides[s.nrp] = {
-            birthday: s.birthday,
             thesisTopic: s.thesisTopic,
-            bio: s.bio,
             discordId: s.discordId,
             expertise: s.expertise,
           };
@@ -213,84 +209,6 @@ class StudentManager {
       console.error('[StudentManager]: Failed to save custom data:', e);
       return false;
     }
-  }
-
-  public getUpcomingBirthdays(daysAhead = 30): { student: StudentRecord; daysLeft: number; dateStr: string }[] {
-    const now = new Date();
-    // Gunakan zona waktu WIB (UTC+7)
-    const currentMonth = now.getUTCMonth() + 1;
-    const currentDay = now.getUTCDate();
-
-    const results: { student: StudentRecord; daysLeft: number; dateStr: string }[] = [];
-
-    for (const s of this.students) {
-      if (!s.birthday) continue;
-      const parts = s.birthday.split('-');
-      if (parts.length < 2) continue;
-
-      const day = parseInt(parts[0], 10);
-      const month = parseInt(parts[1], 10);
-      if (isNaN(day) || isNaN(month)) continue;
-
-      let targetYear = now.getUTCFullYear();
-      let targetDate = new Date(Date.UTC(targetYear, month - 1, day));
-
-      if (targetDate.getTime() < now.getTime() - 86400000) {
-        targetYear += 1;
-        targetDate = new Date(Date.UTC(targetYear, month - 1, day));
-      }
-
-      const diffTime = targetDate.getTime() - now.getTime();
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-      if (diffDays >= 0 && diffDays <= daysAhead) {
-        results.push({
-          student: s,
-          daysLeft: diffDays,
-          dateStr: `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}`,
-        });
-      }
-    }
-
-    results.sort((a, b) => a.daysLeft - b.daysLeft);
-    return results;
-  }
-
-  public getUpcomingLecturerBirthdays(daysAhead = 30): { lecturer: LecturerProfile; daysLeft: number; dateStr: string }[] {
-    const now = new Date();
-    const results: { lecturer: LecturerProfile; daysLeft: number; dateStr: string }[] = [];
-
-    for (const l of Object.values(this.lecturers)) {
-      if (!l.birthday) continue;
-      const parts = l.birthday.split('-');
-      if (parts.length < 2) continue;
-
-      const day = parseInt(parts[0], 10);
-      const month = parseInt(parts[1], 10);
-      if (isNaN(day) || isNaN(month)) continue;
-
-      let targetYear = now.getUTCFullYear();
-      let targetDate = new Date(Date.UTC(targetYear, month - 1, day));
-
-      if (targetDate.getTime() < now.getTime() - 86400000) {
-        targetYear += 1;
-        targetDate = new Date(Date.UTC(targetYear, month - 1, day));
-      }
-
-      const diffTime = targetDate.getTime() - now.getTime();
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-      if (diffDays >= 0 && diffDays <= daysAhead) {
-        results.push({
-          lecturer: l,
-          daysLeft: diffDays,
-          dateStr: `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}`,
-        });
-      }
-    }
-
-    results.sort((a, b) => a.daysLeft - b.daysLeft);
-    return results;
   }
 }
 

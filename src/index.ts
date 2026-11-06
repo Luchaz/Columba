@@ -14,7 +14,6 @@ import { registerPlayerEvents } from './events/playerEvents';
 import { registerClientReadyEvent } from './events/ready';
 import { registerInteractionCreateEvent } from './events/interactionCreate';
 import { registerMessageCreateEvent } from './events/messageCreate';
-import { initBirthdayScheduler } from './services/birthdayScheduler';
 
 // Pastikan FFmpeg binary terdeteksi otomatis (menggunakan /usr/bin/ffmpeg di Linux Docker atau ffmpeg-static di Windows)
 if (!process.env.FFMPEG_PATH) {
@@ -106,16 +105,13 @@ async function bootstrap() {
   }
   console.log('✅ [AudioEngine]: Seluruh Extractor (Spotify, Modern YouTube HQ Bridge, & Native Stream) siap!');
 
-  // 5. Pasang Event Listeners (Player Events, Slash Commands, & Prefix m!p Playback Cepat)
+  // 5. Pasang Event Listeners (Player Events, Slash Commands, & Prefix Playback Cepat)
   registerPlayerEvents(player);
   registerClientReadyEvent(client);
   registerInteractionCreateEvent(client);
   registerMessageCreateEvent(client);
 
-  // 6. Jalankan Scheduler Otomatis Ulang Tahun Mahasiswa S2 SI ITS 2026
-  initBirthdayScheduler(client);
-
-  // 7. Built-in Health-Check HTTP Server untuk Cloud Worker 24/7 (Railway / Render)
+  // 6. Built-in Health-Check HTTP Server untuk Cloud Worker 24/7 (Railway / Render)
   const port = Number(process.env.PORT) || 3000;
   http
     .createServer((_req, res) => {
