@@ -8,6 +8,7 @@ import {
 import { Ytdl } from '@distube/ytdl-core';
 import YouTube, { Video } from 'youtube-sr';
 import { Readable } from 'stream';
+import { sanitizeYouTubeUrl } from '../utils/smartSearch';
 
 const ytdl = new Ytdl();
 
@@ -161,10 +162,7 @@ export class ModernYouTubeExtractor extends BaseExtractor {
     // 2. Single YouTube Video URL (bersihkan parameter playlist mix agar tidak mengganggu metadata)
     if (/^(https?:\/\/)?(www\.|m\.|music\.)?(youtube\.com|youtu\.be)\/.+$/i.test(cleanUrl)) {
       try {
-        const sanitizedVideoUrl = cleanUrl
-          .replace(/([?&])list=RD[^&]+/i, '')
-          .replace(/([?&])start_radio=[^&]+/i, '')
-          .replace(/[?&]$/, '');
+        const sanitizedVideoUrl = sanitizeYouTubeUrl(cleanUrl);
 
         const info = await ytdl.getInfo(sanitizedVideoUrl);
         const details = info.videoDetails;
@@ -217,10 +215,7 @@ export class ModernYouTubeExtractor extends BaseExtractor {
   }
 
   async stream(track: Track): Promise<Readable> {
-    const streamUrl = track.url
-      .replace(/([?&])list=RD[^&]+/i, '')
-      .replace(/([?&])start_radio=[^&]+/i, '')
-      .replace(/[?&]$/, '');
+    const streamUrl = sanitizeYouTubeUrl(track.url);
 
     return (await ytdl.download(streamUrl, {
       quality: 'highestaudio',

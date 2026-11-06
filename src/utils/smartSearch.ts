@@ -3,6 +3,24 @@ import { Player, SearchResult } from 'discord-player';
 import { cleanTrackTitle } from './lyricsFinder';
 
 /**
+ * Membersihkan URL YouTube dari parameter Mix/Radio dinamis (list=RD...) yang menyebabkan kegagalan fetch
+ */
+export function sanitizeYouTubeUrl(input: string): string {
+  try {
+    const u = new URL(input.trim());
+    const listVal = u.searchParams.get('list') || '';
+    if (listVal.startsWith('RD') || listVal.startsWith('UL')) {
+      u.searchParams.delete('list');
+      u.searchParams.delete('start_radio');
+      u.searchParams.delete('index');
+    }
+    return u.toString();
+  } catch {
+    return input.trim();
+  }
+}
+
+/**
  * Mengecek apakah string adalah URL YouTube / YouTube Music
  */
 export function isYouTubeUrl(input: string): boolean {
@@ -64,10 +82,7 @@ export async function smartSearch(
 
   // 1. Jika query adalah URL YouTube langsung -> coba cari langsung dengan YouTube Extractor
   if (isYouTubeUrl(query)) {
-    const sanitizedUrl = query
-      .replace(/([?&])list=RD[^&]+/i, '')
-      .replace(/([?&])start_radio=[^&]+/i, '')
-      .replace(/[?&]$/, '');
+    const sanitizedUrl = sanitizeYouTubeUrl(query);
 
     try {
       const ytResult = await player.search(sanitizedUrl, { requestedBy });

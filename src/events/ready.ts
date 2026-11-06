@@ -23,6 +23,16 @@ export function registerClientReadyEvent(client: Client) {
       }
     }
 
+    // Bersihkan koneksi voice yang menggantung dari restart sebelumnya
+    readyClient.guilds.cache.forEach((guild) => {
+      if (guild.members.me?.voice.channel) {
+        try {
+          guild.members.me.voice.disconnect();
+          console.log(`🧹 [Voice Clean]: Membersihkan voice stale di guild "${guild.name}"`);
+        } catch {}
+      }
+    });
+
     try {
       if (readyClient.user.username !== 'Columba') {
         await readyClient.user.setUsername('Columba');

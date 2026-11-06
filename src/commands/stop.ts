@@ -16,8 +16,9 @@ export const command: BotCommand = {
 
   async execute(interaction: ChatInputCommandInteraction) {
     const queue = useQueue<QueueMetadata>(interaction.guildId!);
+    const botVoice = interaction.guild?.members.me?.voice.channel;
 
-    if (!queue) {
+    if (!queue && !botVoice) {
       await interaction.reply({
         embeds: [
           new EmbedBuilder()
@@ -30,7 +31,6 @@ export const command: BotCommand = {
     }
 
     const member = interaction.member as GuildMember;
-    const botVoice = interaction.guild?.members.me?.voice.channel;
     if (botVoice && member.voice.channelId !== botVoice.id) {
       await interaction.reply({
         embeds: [
@@ -43,14 +43,21 @@ export const command: BotCommand = {
       return;
     }
 
-    await disableOldPlayerMessage(queue);
-    queue.delete();
+    if (queue) {
+      await disableOldPlayerMessage(queue);
+      queue.delete();
+    }
+    if (botVoice) {
+      try {
+        interaction.guild?.members.me?.voice.disconnect();
+      } catch {}
+    }
 
     await interaction.reply({
       embeds: [
         new EmbedBuilder()
           .setColor(BRAND_COLORS.ERROR)
-          .setDescription(`⏹️ **Pemutaran musik dihentikan dan antrean telah dibersihkan oleh ${interaction.user}.**`),
+          .setDescription(`⏹️ **Pemutaran musik dihentikan dan bot telah keluar dari Voice Channel oleh ${interaction.user}.**`),
       ],
     });
   },

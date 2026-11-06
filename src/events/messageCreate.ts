@@ -169,11 +169,15 @@ export function registerMessageCreateEvent(client: Client) {
       // ======================================================================
       if (cmd === 'stop' || cmd === 'leave' || cmd === 'dc' || cmd === 'disconnect') {
         const queue = useQueue<QueueMetadata>(message.guildId!);
-        if (!queue) {
-          return;
+        if (queue) {
+          await disableOldPlayerMessage(queue);
+          queue.delete();
         }
-        await disableOldPlayerMessage(queue);
-        queue.delete();
+        if (message.guild.members.me?.voice.channel) {
+          try {
+            message.guild.members.me.voice.disconnect();
+          } catch {}
+        }
         if ('send' in message.channel) {
           await message.channel.send({
             embeds: [
