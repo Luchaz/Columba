@@ -65,9 +65,9 @@ export const command: BotCommand = {
 
     const filtered = students.filter(
       (s) =>
-        s.name.toLowerCase().includes(focusedValue) ||
-        s.nrp.includes(focusedValue) ||
-        s.lab.toLowerCase().includes(focusedValue) ||
+        (s.name && s.name.toLowerCase().includes(focusedValue)) ||
+        (s.nrp && s.nrp.includes(focusedValue)) ||
+        (s.lab && s.lab.toLowerCase().includes(focusedValue)) ||
         (s.expertise && s.expertise.toLowerCase().includes(focusedValue))
     );
 

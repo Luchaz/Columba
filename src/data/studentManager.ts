@@ -123,10 +123,10 @@ class StudentManager {
     const q = query.toLowerCase().trim();
     return this.students.filter(
       (s) =>
-        s.name.toLowerCase().includes(q) ||
-        s.nrp.includes(q) ||
-        s.advisor.toLowerCase().includes(q) ||
-        s.lab.toLowerCase() === q ||
+        (s.name && s.name.toLowerCase().includes(q)) ||
+        (s.nrp && s.nrp.includes(q)) ||
+        (s.advisor && s.advisor.toLowerCase().includes(q)) ||
+        (s.lab && s.lab.toLowerCase() === q) ||
         (s.expertise && s.expertise.toLowerCase().includes(q)) ||
         (s.originS1 && s.originS1.toLowerCase().includes(q)) ||
         (s.thesisTopic && s.thesisTopic.toLowerCase().includes(q))
@@ -135,12 +135,12 @@ class StudentManager {
 
   public getByLab(labCode: string): StudentRecord[] {
     const upper = labCode.toUpperCase().trim();
-    return this.students.filter((s) => s.lab === upper);
+    return this.students.filter((s) => s.lab && s.lab.toUpperCase() === upper);
   }
 
   public getByAdvisor(advisorQuery: string): StudentRecord[] {
     const q = advisorQuery.toLowerCase().trim();
-    return this.students.filter((s) => s.advisor.toLowerCase().includes(q));
+    return this.students.filter((s) => s.advisor && s.advisor.toLowerCase().includes(q));
   }
 
   public getAdvisorProfile(advisorName: string): LecturerProfile | undefined {

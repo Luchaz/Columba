@@ -55,8 +55,8 @@ export const command: BotCommand = {
 
     const filtered = students.filter(
       (s) =>
-        s.name.toLowerCase().includes(focusedValue) ||
-        s.nrp.includes(focusedValue)
+        (s.name && s.name.toLowerCase().includes(focusedValue)) ||
+        (s.nrp && s.nrp.includes(focusedValue))
     );
 
     const choices = filtered.slice(0, 25).map((s) => ({
