@@ -65,6 +65,5 @@
 <div align="center">
 
 Crafted with ❤️ by **[Luchaz](https://github.com/Luchaz)** (`yukheiw` / Lukas)  
-*Feel free to star ⭐ or contribute!*
 
 </div>
