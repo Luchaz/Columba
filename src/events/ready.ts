@@ -56,7 +56,9 @@ export function registerClientReadyEvent(client: Client) {
         await rest.put(Routes.applicationGuildCommands(clientId, guildId.trim()), {
           body: commandsPayload,
         });
-        console.log('✅ [Slash Sync]: Guild Slash Commands berhasil terdaftar secara instan!');
+        // Pastikan tidak ada slash command global lama yang tertinggal/hantu di Discord cache
+        await rest.put(Routes.applicationCommands(clientId), { body: [] });
+        console.log('✅ [Slash Sync]: Guild Slash Commands berhasil terdaftar secara instan & global commands disinkronkan bersih!');
       } else {
         console.log(
           `⏳ [Slash Sync]: Mendaftarkan ${commandsPayload.length} Global Slash Commands...`

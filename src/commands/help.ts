@@ -32,7 +32,7 @@ export const command: BotCommand = {
           '',
           '### Pemutar Musik (24/7 Hi-Fi)',
           '• `/play <judul/link>` atau `.p <lagu>` — Putar lagu atau playlist (Spotify / YouTube)',
-          '• `/nowplaying` atau `/np` atau `.np` — Tampilkan kartu lagu yang sedang diputar',
+          '• `/nowplaying` atau `.np` — Tampilkan kartu lagu yang sedang diputar',
           '• `/queue` atau `.q` — Tampilkan daftar antrean lagu dengan paginasi',
           '• `/shuffle` atau `.sh` — Acak urutan lagu dalam antrean pemutaran',
           '• `/skip` atau `.s` — Lewati lagu yang sedang diputar',

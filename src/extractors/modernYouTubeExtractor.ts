@@ -8,7 +8,7 @@ import {
 import { SoundCloudExtractor } from '@discord-player/extractor';
 import { Ytdl, createPoTokenProvider } from '@distube/ytdl-core';
 import YouTube, { Video } from 'youtube-sr';
-import { Readable } from 'stream';
+import { PassThrough, Readable } from 'stream';
 import { sanitizeYouTubeUrl } from '../utils/smartSearch';
 
 let ytdlInstance: Ytdl | null = null;
@@ -233,51 +233,129 @@ export class ModernYouTubeExtractor extends BaseExtractor {
     }
   }
 
-  async stream(track: Track): Promise<Readable | string> {
-    const streamUrl = sanitizeYouTubeUrl(track.url);
+  /**
+   * Mengunduh audio YouTube dengan proteksi verifikasi chunk pertama.
+   * Jika terkena IP-block/403 dari datacenter cloud atau tidak menghasilkan data dalam 2.5s,
+   * stream otomatis dihentikan dan memicu fallback instan.
+   */
+  private async downloadYouTubeVerified(streamUrl: string, timeoutMs = 2500): Promise<Readable> {
+    const ytdl = await getYtdl();
+    return new Promise(async (resolve, reject) => {
+      let settled = false;
+      try {
+        const rawStream = await ytdl.download(streamUrl, {
+          quality: 'highestaudio',
+          filter: { hasAudio: true, hasVideo: false },
+          highWaterMark: 1024 * 1024 * 2,
+        });
 
-    // 1. Coba stream via YouTube dengan PO Token
-    try {
-      const ytdl = await getYtdl();
-      console.log(`📡 [AudioEngine]: Requesting YouTube stream for "${track.title}"...`);
-      const ytStream = await ytdl.download(streamUrl, {
-        quality: 'highestaudio',
-        filter: { hasAudio: true, hasVideo: false },
-        highWaterMark: 1024 * 1024 * 4,
-      });
+        const timer = setTimeout(() => {
+          if (!settled) {
+            settled = true;
+            rawStream.destroy();
+            reject(new Error('YouTube stream timed out (Cloud IP blocked/throttled)'));
+          }
+        }, timeoutMs);
 
-      return ytStream as unknown as Readable;
-    } catch (ytErr) {
-      console.warn(`⚠️ [AudioEngine]: YouTube stream issue (${ytErr}). Fallback ke SoundCloud bridge...`);
-    }
+        const pt = new PassThrough();
 
-    // 2. Fallback instan: SoundCloud Bridge
+        rawStream.once('error', (err) => {
+          if (!settled) {
+            settled = true;
+            clearTimeout(timer);
+            rawStream.destroy();
+            reject(err);
+          }
+        });
+
+        rawStream.once('data', (firstChunk) => {
+          if (!settled) {
+            settled = true;
+            clearTimeout(timer);
+            pt.write(firstChunk);
+            rawStream.pipe(pt);
+            resolve(pt);
+          }
+        });
+      } catch (err) {
+        if (!settled) {
+          settled = true;
+          reject(err);
+        }
+      }
+    });
+  }
+
+  /**
+   * Helper untuk mengambil audio stream resmi dari SoundCloud (100% bebas blokir cloud)
+   */
+  private async getSoundCloudAudio(query: string, requestedBy: any): Promise<Readable | string | null> {
     try {
       const scExt = new SoundCloudExtractor(this.context, {});
       await scExt.activate();
-      const searchQuery = `${track.author} - ${track.title}`;
-      console.log(`✨ [AudioEngine]: Mencari audio cadangan di SoundCloud: "${searchQuery}"`);
-      const searchRes = await scExt.handle(searchQuery, { requestedBy: track.requestedBy });
+      const clean = query.replace(/[\(\[\{].*?[\)\]\}]/g, '').trim();
+      const targetQuery = clean || query;
+      console.log(`✨ [AudioEngine]: Mencari audio CDN di SoundCloud: "${targetQuery}"`);
+      const searchRes = await scExt.handle(targetQuery, { requestedBy });
       if (searchRes.tracks.length > 0) {
         const scTrack = searchRes.tracks[0];
-        console.log(`✅ [AudioEngine]: Menghubungkan ke SoundCloud: "${scTrack.title}" (${scTrack.url})`);
-        const scStream = await scExt.stream(scTrack);
-        return scStream;
+        console.log(`✅ [AudioEngine]: Terhubung ke SoundCloud CDN: "${scTrack.title}" (${scTrack.url})`);
+        return await scExt.stream(scTrack);
       }
     } catch (scErr) {
-      console.error(`❌ [AudioEngine]: SoundCloud fallback error:`, scErr);
+      this.context.player.debug(`SoundCloud stream fetch error: ${scErr}`);
+    }
+    return null;
+  }
+
+  async stream(track: Track): Promise<Readable | string> {
+    const streamUrl = sanitizeYouTubeUrl(track.url);
+
+    // 1. Coba stream via YouTube dengan verifikasi penerimaan chunk data
+    try {
+      console.log(`📡 [AudioEngine]: Memulai stream YouTube untuk "${track.title}"...`);
+      const ytStream = await this.downloadYouTubeVerified(streamUrl, 2500);
+      return ytStream;
+    } catch (ytErr) {
+      console.warn(`⚠️ [AudioEngine]: YouTube stream tidak merespons (${(ytErr as Error)?.message || ytErr}). Beralih instan ke SoundCloud...`);
+    }
+
+    // 2. Fallback instan: SoundCloud Direct CDN Stream
+    const author = (track.author || '').trim();
+    const cleanTitle = track.title.trim();
+    const searchQuery = author && !cleanTitle.toLowerCase().includes(author.toLowerCase())
+      ? `${author} - ${cleanTitle}`
+      : cleanTitle;
+
+    const scStream = await this.getSoundCloudAudio(searchQuery, track.requestedBy);
+    if (scStream) {
+      return scStream;
     }
 
     throw new Error(`Tidak dapat memutar audio untuk "${track.title}".`);
   }
 
   async bridge(track: Track, sourceExtractor?: any): Promise<Readable | string | null> {
+    const author = (track.author || '').trim();
+    const title = track.title.trim();
+    const searchQuery = author && !title.toLowerCase().includes(author.toLowerCase())
+      ? `${author} - ${title}`
+      : title;
+
+    // 1. Prioritas Utama untuk Bridging (Spotify / Apple Music): SoundCloud CDN
+    // Karena SoundCloud memberikan direct CDN audio URL yang 100% bebas blokir IP Datacenter Cloud
+    const scStream = await this.getSoundCloudAudio(searchQuery, track.requestedBy);
+    if (scStream) {
+      return scStream;
+    }
+
+    // 2. Fallback Bridging ke YouTube jika lagu tidak ditemukan di SoundCloud
     try {
       const query = sourceExtractor?.createBridgeQuery
         ? sourceExtractor.createBridgeQuery(track)
         : `${track.author} - ${track.title} official audio`;
 
-      const searchVideos = await YouTube.search(query, { limit: 8, type: 'video' });
+      const searchVideos = await YouTube.search(query, { limit: 6, type: 'video' });
       const bestVideo = findBestOfficialVideo(
         searchVideos,
         track.title,
@@ -292,28 +370,12 @@ export class ModernYouTubeExtractor extends BaseExtractor {
           bridgedYoutubeTitle: bestVideo.title,
         };
 
-        const ytdl = await getYtdl();
-        const ytStream = await ytdl.download(bestVideo.url, {
-          quality: 'highestaudio',
-          filter: { hasAudio: true, hasVideo: false },
-          highWaterMark: 1024 * 1024 * 4,
-        });
-        return ytStream as unknown as Readable;
+        console.log(`📡 [AudioEngine]: Bridging fallback ke YouTube: "${bestVideo.title}"`);
+        return await this.downloadYouTubeVerified(bestVideo.url, 2500);
       }
     } catch (error) {
       this.context.player.debug(`ModernYouTubeExtractor bridge error: ${error}`);
     }
-
-    // Fallback bridging via SoundCloud
-    try {
-      const scExt = new SoundCloudExtractor(this.context, {});
-      await scExt.activate();
-      const searchQuery = `${track.author} - ${track.title}`;
-      const searchRes = await scExt.handle(searchQuery, { requestedBy: track.requestedBy });
-      if (searchRes.tracks.length > 0) {
-        return await scExt.stream(searchRes.tracks[0]);
-      }
-    } catch {}
 
     return null;
   }

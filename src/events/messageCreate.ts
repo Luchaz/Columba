@@ -332,11 +332,10 @@ export function registerMessageCreateEvent(client: Client) {
                   '`/jadwal` Jadwal perkuliahan mingguan & ruangan',
                   '`/tesis` Struktur proposal tesis & portal UGDSI',
                   '`/kalender` Agenda akademik, UTS/UAS & yudisium',
-                  '`/mahasiswa` Direktori 29 mahasiswa, NRP & lab',
+                  '`/mahasiswa` Direktori mahasiswa seangkatan, NRP, pembimbing & lab',
                   '`/dosen` Profil dosen, gelar lengkap & bidang riset',
                   '`/lab` Informasi 5 laboratorium riset SI ITS',
-                  '`/profil` Lihat dan perbarui data profil diri',
-                  '`/ultah` Kalender ulang tahun angkatan',
+                  '`/profil` Lihat dan perbarui keahlian serta topik tesis diri',
                   '',
                   '-# Ketik `/help` untuk panduan lengkap dengan deskripsi interaktif.',
                 ].join('\n')
