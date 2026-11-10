@@ -41,6 +41,7 @@ const UNWANTED_KEYWORDS = [
   'nightcore',
   'bass boost',
   'bass boosted',
+  'bassboost',
   'mashup',
   'tribute',
   'karaoke',
@@ -52,6 +53,10 @@ const UNWANTED_KEYWORDS = [
   'parody',
   'reaction',
   'snippet',
+  'bootleg',
+  'flip',
+  'hardstyle',
+  'earrape',
 ];
 
 /**
@@ -85,7 +90,7 @@ export function findBestOfficialVideo(
     const vSec = v.duration ? Math.round(v.duration / 1000) : 0;
     if (targetSec > 0 && vSec > 0) {
       const diff = Math.abs(vSec - targetSec);
-      if (diff > 50) continue;
+      if (diff > 45) continue;
     }
 
     let score = 100;
@@ -94,8 +99,8 @@ export function findBestOfficialVideo(
     }
 
     // Skor bonus untuk channel resmi atau audio resmi
-    if (vChannel.includes('topic') || vChannel.includes('vevo')) score += 30;
-    if (vTitle.includes('official audio') || vTitle.includes('official music video')) score += 25;
+    if (vChannel.includes('topic') || vChannel.includes('vevo')) score += 40;
+    if (vTitle.includes('official audio') || vTitle.includes('official music video') || vTitle.includes('official video')) score += 30;
     if (vTitle.includes('audio') || vTitle.includes('lyrics')) score += 15;
     if (vTitle.includes('official')) score += 10;
 
@@ -114,6 +119,76 @@ export function findBestOfficialVideo(
   });
 
   return nonLoop || videos[0] || null;
+}
+
+/**
+ * Memilih audio SoundCloud paling akurat dan resmi jika YouTube fallback diperlukan.
+ * Mencegah pemutaran bootleg hardstyle, slowed+reverb, atau remix tidak resmi.
+ */
+export function findBestSoundCloudTrack(
+  tracks: Track[],
+  targetTitle: string,
+  targetAuthor: string,
+  targetDurationMS?: number
+): Track | null {
+  if (!tracks || tracks.length === 0) return null;
+
+  const origLower = `${targetTitle} ${targetAuthor}`.toLowerCase();
+  const allowedKeywords = UNWANTED_KEYWORDS.filter((w) => origLower.includes(w));
+  const targetSec = targetDurationMS ? Math.round(targetDurationMS / 1000) : 0;
+  const cleanTargetTitle = targetTitle.toLowerCase().replace(/[\(\[\{].*?[\)\]\}]/g, '').trim();
+  const cleanTargetAuthor = targetAuthor.toLowerCase().replace(/[\(\[\{].*?[\)\]\}]/g, '').trim();
+
+  const scored: { track: Track; score: number }[] = [];
+
+  for (const t of tracks) {
+    const tTitle = (t.title || '').toLowerCase();
+    const tAuthor = (t.author || '').toLowerCase();
+
+    // 1. Cek kata terlarang (remix, slowed, reverb, bootleg, dll)
+    const hasDisallowedWord = UNWANTED_KEYWORDS.some(
+      (w) => !allowedKeywords.includes(w) && tTitle.includes(w)
+    );
+    if (hasDisallowedWord) continue;
+
+    // 2. Cek kesesuaian durasi agar tidak memutar preview atau loop
+    const tSec = t.durationMS ? Math.round(t.durationMS / 1000) : 0;
+    if (targetSec > 0 && tSec > 0) {
+      const diff = Math.abs(tSec - targetSec);
+      if (diff > 40) continue;
+    }
+
+    let score = 100;
+    if (targetSec > 0 && tSec > 0) {
+      score -= Math.abs(tSec - targetSec);
+    }
+
+    // Bonus jika nama artis atau judul cocok kuat
+    if (cleanTargetAuthor && (tAuthor.includes(cleanTargetAuthor) || tTitle.includes(cleanTargetAuthor))) {
+      score += 40;
+    }
+    if (cleanTargetTitle && tTitle.includes(cleanTargetTitle)) {
+      score += 30;
+    }
+    if (tTitle.includes('official') || tTitle.includes('original')) {
+      score += 20;
+    }
+
+    scored.push({ track: t, score });
+  }
+
+  if (scored.length > 0) {
+    scored.sort((a, b) => b.score - a.score);
+    return scored[0].track;
+  }
+
+  // Fallback bersih: cari yang tidak mengandung remix/slowed/reverb/bootleg
+  const cleanFallback = tracks.find((t) => {
+    const s = (t.title || '').toLowerCase();
+    return !UNWANTED_KEYWORDS.some((w) => s.includes(w));
+  });
+
+  return cleanFallback || null;
 }
 
 export class ModernYouTubeExtractor extends BaseExtractor {
@@ -287,20 +362,33 @@ export class ModernYouTubeExtractor extends BaseExtractor {
   }
 
   /**
-   * Helper untuk mengambil audio stream resmi dari SoundCloud (100% bebas blokir cloud)
+   * Helper untuk mengambil audio stream resmi dari SoundCloud dengan filter ketat anti-remix / anti-bootleg.
    */
-  private async getSoundCloudAudio(query: string, requestedBy: any): Promise<Readable | string | null> {
+  private async getSoundCloudAudio(
+    title: string,
+    author: string,
+    durationMS: number | undefined,
+    requestedBy: any
+  ): Promise<Readable | string | null> {
     try {
       const scExt = new SoundCloudExtractor(this.context, {});
       await scExt.activate();
-      const clean = query.replace(/[\(\[\{].*?[\)\]\}]/g, '').trim();
-      const targetQuery = clean || query;
-      console.log(`✨ [AudioEngine]: Mencari audio CDN di SoundCloud: "${targetQuery}"`);
-      const searchRes = await scExt.handle(targetQuery, { requestedBy });
+      const cleanTitle = title.replace(/[\(\[\{].*?[\)\]\}]/g, '').trim() || title;
+      const cleanAuthor = author.replace(/[\(\[\{].*?[\)\]\}]/g, '').trim();
+      const searchQuery = cleanAuthor && !cleanTitle.toLowerCase().includes(cleanAuthor.toLowerCase())
+        ? `${cleanAuthor} - ${cleanTitle}`
+        : cleanTitle;
+
+      console.log(`✨ [AudioEngine]: Mencari SoundCloud resmi: "${searchQuery}"`);
+      const searchRes = await scExt.handle(searchQuery, { requestedBy });
       if (searchRes.tracks.length > 0) {
-        const scTrack = searchRes.tracks[0];
-        console.log(`✅ [AudioEngine]: Terhubung ke SoundCloud CDN: "${scTrack.title}" (${scTrack.url})`);
-        return await scExt.stream(scTrack);
+        const bestTrack = findBestSoundCloudTrack(searchRes.tracks, cleanTitle, cleanAuthor, durationMS);
+        if (bestTrack) {
+          console.log(`✅ [AudioEngine]: Terhubung ke SoundCloud resmi: "${bestTrack.title}" by "${bestTrack.author}" (${bestTrack.duration})`);
+          return await scExt.stream(bestTrack);
+        } else {
+          console.warn(`⚠️ [AudioEngine]: Hasil SoundCloud untuk "${searchQuery}" ditolak karena semua versi remix/bootleg/tidak resmi.`);
+        }
       }
     } catch (scErr) {
       this.context.player.debug(`SoundCloud stream fetch error: ${scErr}`);
@@ -314,48 +402,38 @@ export class ModernYouTubeExtractor extends BaseExtractor {
     // 1. Coba stream via YouTube dengan verifikasi penerimaan chunk data
     try {
       console.log(`📡 [AudioEngine]: Memulai stream YouTube untuk "${track.title}"...`);
-      const ytStream = await this.downloadYouTubeVerified(streamUrl, 2500);
+      const ytStream = await this.downloadYouTubeVerified(streamUrl, 3000);
       return ytStream;
     } catch (ytErr) {
-      console.warn(`⚠️ [AudioEngine]: YouTube stream tidak merespons (${(ytErr as Error)?.message || ytErr}). Beralih instan ke SoundCloud...`);
+      console.warn(`⚠️ [AudioEngine]: YouTube stream tidak merespons (${(ytErr as Error)?.message || ytErr}). Beralih ke SoundCloud tersaring...`);
     }
 
-    // 2. Fallback instan: SoundCloud Direct CDN Stream
+    // 2. Fallback instan: SoundCloud Direct CDN Stream dengan FILTER KETAT
     const author = (track.author || '').trim();
     const cleanTitle = track.title.trim();
-    const searchQuery = author && !cleanTitle.toLowerCase().includes(author.toLowerCase())
-      ? `${author} - ${cleanTitle}`
-      : cleanTitle;
 
-    const scStream = await this.getSoundCloudAudio(searchQuery, track.requestedBy);
+    const scStream = await this.getSoundCloudAudio(cleanTitle, author, track.durationMS, track.requestedBy);
     if (scStream) {
       return scStream;
     }
 
-    throw new Error(`Tidak dapat memutar audio untuk "${track.title}".`);
+    throw new Error(`Tidak dapat memutar audio resmi untuk "${track.title}".`);
   }
 
   async bridge(track: Track, sourceExtractor?: any): Promise<Readable | string | null> {
     const author = (track.author || '').trim();
     const title = track.title.trim();
-    const searchQuery = author && !title.toLowerCase().includes(author.toLowerCase())
-      ? `${author} - ${title}`
-      : title;
+    const cleanTitle = title.replace(/[\(\[\{].*?[\)\]\}]/g, '').trim() || title;
 
-    // 1. Prioritas Utama untuk Bridging (Spotify / Apple Music): SoundCloud CDN
-    // Karena SoundCloud memberikan direct CDN audio URL yang 100% bebas blokir IP Datacenter Cloud
-    const scStream = await this.getSoundCloudAudio(searchQuery, track.requestedBy);
-    if (scStream) {
-      return scStream;
-    }
-
-    // 2. Fallback Bridging ke YouTube jika lagu tidak ditemukan di SoundCloud
+    // 1. PRIORITAS UTAMA: Bridging ke YouTube Official Studio Track
+    // YouTube memiliki channel resmi - Topic / VEVO dari label rekaman yang 100% akurat sesuai lagu asli
     try {
       const query = sourceExtractor?.createBridgeQuery
         ? sourceExtractor.createBridgeQuery(track)
-        : `${track.author} - ${track.title} official audio`;
+        : `${author} - ${cleanTitle} official audio`;
 
-      const searchVideos = await YouTube.search(query, { limit: 6, type: 'video' });
+      console.log(`🔍 [AudioEngine]: Mencari audio resmi di YouTube untuk "${author} - ${title}"...`);
+      const searchVideos = await YouTube.search(query, { limit: 8, type: 'video' });
       const bestVideo = findBestOfficialVideo(
         searchVideos,
         track.title,
@@ -370,11 +448,19 @@ export class ModernYouTubeExtractor extends BaseExtractor {
           bridgedYoutubeTitle: bestVideo.title,
         };
 
-        console.log(`📡 [AudioEngine]: Bridging fallback ke YouTube: "${bestVideo.title}"`);
-        return await this.downloadYouTubeVerified(bestVideo.url, 2500);
+        console.log(`✅ [AudioEngine]: Terhubung ke YouTube Studio Resmi: "${bestVideo.title}" (${bestVideo.durationFormatted})`);
+        return await this.downloadYouTubeVerified(bestVideo.url, 3000);
       }
     } catch (error) {
-      this.context.player.debug(`ModernYouTubeExtractor bridge error: ${error}`);
+      this.context.player.debug(`ModernYouTubeExtractor YouTube bridge error: ${error}`);
+    }
+
+    // 2. FALLBACK CADANGAN: SoundCloud dengan STRICT ACCURACY FILTER
+    // Hanya jika YouTube tidak dapat diakses dan HANYA lagu yang lolos filter keaslian studio
+    console.warn(`⚠️ [AudioEngine]: YouTube bridge tidak tersedia. Mencoba fallback tersaring di SoundCloud...`);
+    const scStream = await this.getSoundCloudAudio(cleanTitle, author, track.durationMS, track.requestedBy);
+    if (scStream) {
+      return scStream;
     }
 
     return null;
