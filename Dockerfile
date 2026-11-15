@@ -18,7 +18,7 @@ COPY src ./src
 RUN npm run build
 
 ENV NODE_ENV=production
-ENV NODE_OPTIONS="--max-http-header-size=65536"
+ENV NODE_OPTIONS="--dns-result-order=ipv4first --max-http-header-size=65536"
 EXPOSE 3000
 
 CMD ["npm", "start"]

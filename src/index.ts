@@ -1,7 +1,13 @@
 import 'dotenv/config';
+import dns from 'dns';
 import path from 'path';
 import fs from 'fs';
 import http from 'http';
+
+// Pastikan resolusi DNS mendahulukan IPv4 untuk mencegah timeout gateway di Railway/Cloud
+try {
+  dns.setDefaultResultOrder('ipv4first');
+} catch {}
 
 import { Client, Collection, GatewayIntentBits } from 'discord.js';
 import { Player } from 'discord-player';
@@ -54,11 +60,12 @@ FFmpeg.spawn = function ({ args = [], shell = false }: { args?: string[]; shell?
 };
 
 async function bootstrap() {
-  const token = process.env.DISCORD_TOKEN;
-  if (!token) {
+  const rawToken = process.env.DISCORD_TOKEN;
+  if (!rawToken || rawToken.trim() === '') {
     console.error('❌ [ERROR]: DISCORD_TOKEN belum diatur di dalam file .env / Environment Variables!');
     process.exit(1);
   }
+  const token = rawToken.trim().replace(/^["']|["']$/g, '');
 
   // 1. Inisialisasi Discord Client dengan Intents lengkap (termasuk MessageContent untuk prefix m!p)
   const client = new Client({
@@ -111,6 +118,14 @@ async function bootstrap() {
   registerInteractionCreateEvent(client);
   registerMessageCreateEvent(client);
 
+  // Pasang listener gateway diagnostik untuk logging status koneksi
+  client.on('error', (err) => console.error('❌ [Discord Client Error]:', err));
+  client.on('shardError', (err, shardId) => console.error(`❌ [Discord Shard ${shardId} Error]:`, err));
+  client.on('shardDisconnect', (event, shardId) => console.warn(`⚠️ [Discord Shard ${shardId} Disconnect]: code=${event.code}, reason=${event.reason}`));
+  client.on('shardReconnecting', (shardId) => console.log(`🔄 [Discord Shard ${shardId} Reconnecting]...`));
+  client.on('shardResume', (shardId, replayedEvents) => console.log(`▶️ [Discord Shard ${shardId} Resumed]: replayed ${replayedEvents} events`));
+  client.on('shardReady', (shardId) => console.log(`🔌 [Discord Shard ${shardId} Ready]: Connected to Discord Gateway!`));
+
   // 6. Built-in Health-Check HTTP Server untuk Cloud Worker 24/7 (Railway / Render)
   const port = Number(process.env.PORT) || 3000;
   http
@@ -140,7 +155,14 @@ async function bootstrap() {
   });
 
   // 7. Login ke Discord Gateway
-  await client.login(token);
+  console.log(`⏳ [Discord Gateway]: Menghubungkan client ke Discord Gateway (panjang token: ${token.length})...`);
+  try {
+    await client.login(token);
+    console.log('✅ [Discord Gateway]: client.login() handshake dikirim!');
+  } catch (loginErr) {
+    console.error('❌ [Discord Gateway Login Fatal Error]:', loginErr);
+    process.exit(1);
+  }
 }
 
 bootstrap().catch((err) => {

@@ -7,7 +7,7 @@
     "postinstall": "node scripts/patch-voip.js",
     "dev": "tsc --watch --preserveWatchOutput",
     "build": "node scripts/patch-voip.js && tsc",
-    "start": "node --max-http-header-size=65536 scripts/patch-voip.js && node --max-http-header-size=65536 dist/index.js",
+    "start": "node --dns-result-order=ipv4first --max-http-header-size=65536 scripts/patch-voip.js && node --dns-result-order=ipv4first --max-http-header-size=65536 dist/index.js",
     "lint": "tsc --noEmit"
   },
   "keywords": [
