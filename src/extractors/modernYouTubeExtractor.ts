@@ -253,10 +253,35 @@ export class ModernYouTubeExtractor extends BaseExtractor {
       }
     }
 
-    // 2. Single YouTube Video URL (bersihkan parameter playlist mix agar tidak mengganggu metadata)
+    // 2. Single YouTube Video URL (bersihkan parameter tracking & playlist mix agar tidak mengganggu metadata)
     if (/^(https?:\/\/)?(www\.|m\.|music\.)?(youtube\.com|youtu\.be)\/.+$/i.test(cleanUrl)) {
+      const sanitizedVideoUrl = sanitizeYouTubeUrl(cleanUrl);
+
+      // A. Coba ambil metadata langsung via YouTube.getVideo (youtube-sr) - paling cepat, stabil & anti-blokir IP Cloud
       try {
-        const sanitizedVideoUrl = sanitizeYouTubeUrl(cleanUrl);
+        const v = await YouTube.getVideo(sanitizedVideoUrl);
+        if (v && v.title) {
+          const track = new Track(this.context.player, {
+            title: v.title,
+            description: v.title,
+            author: v.channel?.name || 'YouTube',
+            url: v.url || sanitizedVideoUrl,
+            thumbnail: v.thumbnail?.url || '',
+            duration: v.durationFormatted || Util.buildTimeCode(Util.parseMS(v.duration || 0)),
+            views: v.views || 0,
+            requestedBy: context.requestedBy,
+            source: 'youtube',
+            queryType: QueryType.YOUTUBE_VIDEO,
+          });
+          track.extractor = this;
+          return this.createResponse(null, [track]);
+        }
+      } catch (ytSrErr) {
+        this.context.player.debug(`YouTube.getVideo failed: ${ytSrErr}`);
+      }
+
+      // B. Fallback ke ytdl.getInfo jika youtube-sr gagal
+      try {
         const ytdl = await getYtdl();
         const info = await ytdl.getInfo(sanitizedVideoUrl);
         const details = info.videoDetails;
@@ -278,11 +303,18 @@ export class ModernYouTubeExtractor extends BaseExtractor {
         track.extractor = this;
         return this.createResponse(null, [track]);
       } catch (err) {
-        this.context.player.debug(`Failed to fetch direct YouTube video: ${err}`);
+        this.context.player.debug(`Failed to fetch direct YouTube video via ytdl: ${err}`);
       }
+
+      // Jangan pernah fallback ke YouTube.search jika query adalah URL YouTube langsung yang gagal diparse
+      return this.createResponse(null, []);
     }
 
-    // 3. YouTube Search Query
+    // 3. YouTube Search Query (hanya untuk query teks judul lagu biasa, bukan URL)
+    if (/^https?:\/\//i.test(cleanUrl)) {
+      return this.createResponse(null, []);
+    }
+
     try {
       const videos = await YouTube.search(cleanUrl, { limit: 10, type: 'video' });
       const tracks = videos.map((v) => {

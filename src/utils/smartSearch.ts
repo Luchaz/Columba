@@ -1,19 +1,39 @@
 import { User } from 'discord.js';
-import { Player, SearchResult } from 'discord-player';
+import { Player, QueryType, SearchResult, Track } from 'discord-player';
 import { cleanTrackTitle } from './lyricsFinder';
 
 /**
- * Membersihkan URL YouTube dari parameter Mix/Radio dinamis (list=RD...) yang menyebabkan kegagalan fetch
+ * Membersihkan URL YouTube dari parameter tracking (si, feature, pp, dll) & Mix/Radio dinamis (list=RD...)
+ * Serta menormalisasi shortlink youtu.be/<id> menjadi https://www.youtube.com/watch?v=<id>
  */
 export function sanitizeYouTubeUrl(input: string): string {
   try {
-    const u = new URL(input.trim());
+    const raw = input.trim();
+    const u = new URL(raw);
+
+    // Hapus parameter tracking & share mobile
+    u.searchParams.delete('si');
+    u.searchParams.delete('feature');
+    u.searchParams.delete('pp');
+    u.searchParams.delete('utm_source');
+    u.searchParams.delete('utm_medium');
+    u.searchParams.delete('utm_campaign');
+
     const listVal = u.searchParams.get('list') || '';
     if (listVal.startsWith('RD') || listVal.startsWith('UL')) {
       u.searchParams.delete('list');
       u.searchParams.delete('start_radio');
       u.searchParams.delete('index');
     }
+
+    // Normalisasi shortlink youtu.be/<id>
+    if (u.hostname === 'youtu.be') {
+      const videoId = u.pathname.replace(/^\//, '');
+      if (videoId) {
+        return `https://www.youtube.com/watch?v=${videoId}`;
+      }
+    }
+
     return u.toString();
   } catch {
     return input.trim();
@@ -99,24 +119,49 @@ export async function smartSearch(
       const cleanAuthor = ytMeta.author_name.replace(/\s*(- Topic|VEVO|Official)$/i, '').trim();
       const bridgeQuery = `${cleanedTitle} ${cleanAuthor}`.trim();
 
-      const searchResult = await player.search(bridgeQuery, {
-        requestedBy,
-      });
+      try {
+        const searchResult = await player.search(bridgeQuery, {
+          requestedBy,
+        });
 
-      if (searchResult.hasTracks()) {
-        const primaryTrack = searchResult.tracks[0];
-        primaryTrack.title = ytMeta.title;
-        primaryTrack.author = ytMeta.author_name;
-        if (ytMeta.thumbnail_url) {
-          primaryTrack.thumbnail = ytMeta.thumbnail_url;
+        if (searchResult.hasTracks()) {
+          const primaryTrack = searchResult.tracks[0];
+          primaryTrack.title = ytMeta.title;
+          primaryTrack.author = ytMeta.author_name;
+          if (ytMeta.thumbnail_url) {
+            primaryTrack.thumbnail = ytMeta.thumbnail_url;
+          }
+          primaryTrack.raw = {
+            ...(primaryTrack.raw || {}),
+            isYoutubeBridged: true,
+            originalYoutubeUrl: query,
+          };
+          return searchResult;
         }
-        primaryTrack.raw = {
-          ...(primaryTrack.raw || {}),
-          isYoutubeBridged: true,
-          originalYoutubeUrl: query,
-        };
+      } catch {}
+
+      // Fallback definitif jika searchResult teks kosong: buat Track langsung dari metadata oEmbed & sanitizedUrl
+      const extractor = player.extractors.get('com.merpatify.modern-youtube-extractor');
+      const track = new Track(player, {
+        title: ytMeta.title,
+        description: ytMeta.title,
+        author: ytMeta.author_name,
+        url: sanitizedUrl,
+        thumbnail: ytMeta.thumbnail_url || '',
+        duration: '0:00',
+        views: 0,
+        requestedBy,
+        source: 'youtube',
+        queryType: QueryType.YOUTUBE_VIDEO,
+      });
+      if (extractor) {
+        track.extractor = extractor;
       }
-      return searchResult;
+      return new SearchResult(player, {
+        query: sanitizedUrl,
+        tracks: [track],
+        playlist: null,
+      });
     }
   }
 
