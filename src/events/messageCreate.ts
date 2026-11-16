@@ -95,59 +95,70 @@ export function registerMessageCreateEvent(client: Client) {
         const defaultVolume = Number(process.env.DEFAULT_VOLUME) || 80;
         const leaveCooldown = Number(process.env.LEAVE_ON_EMPTY_COOLDOWN) || 180000;
 
-        const { track } = await player.play(voiceChannel, searchResult, {
-          connectionOptions: {
-            deaf: true,
-          },
-          nodeOptions: {
-            metadata: {
-              channel: message.channel,
-              requestedBy: message.author,
-              lastPlayerMessage: existingQueue?.metadata?.lastPlayerMessage ?? null,
-              activeFilter: existingQueue?.metadata?.activeFilter ?? 'off',
-            } satisfies QueueMetadata,
-            volume: defaultVolume,
-            leaveOnEmpty: true,
-            leaveOnEmptyCooldown: leaveCooldown,
-            leaveOnEnd: false,
-            leaveOnStop: true,
-            bufferingTimeout: 3000, // Buffer 3000ms untuk audio packet stream yang stabil & mencegah audio stuttering/pecah
-            resampler: 48000, // Studio 48kHz sampling rate
-            selfDeaf: true,
-          },
-        });
+        try {
+          const { track } = await player.play(voiceChannel, searchResult, {
+            connectionOptions: {
+              deaf: true,
+            },
+            nodeOptions: {
+              metadata: {
+                channel: message.channel,
+                requestedBy: message.author,
+                lastPlayerMessage: existingQueue?.metadata?.lastPlayerMessage ?? null,
+                activeFilter: existingQueue?.metadata?.activeFilter ?? 'off',
+              } satisfies QueueMetadata,
+              volume: defaultVolume,
+              leaveOnEmpty: true,
+              leaveOnEmptyCooldown: leaveCooldown,
+              leaveOnEnd: false,
+              leaveOnStop: true,
+              bufferingTimeout: 3000, // Buffer 3000ms untuk audio packet stream yang stabil & mencegah audio stuttering/pecah
+              resampler: 48000, // Studio 48kHz sampling rate
+              selfDeaf: true,
+            },
+          });
 
-        const theme = resolvePlatformTheme(track);
-        const displayUrl = (track.raw as Record<string, string>)?.originalYoutubeUrl || track.url;
-        const cleanTitle = track.title.replace(/\s+/g, ' ').trim();
-        const cleanAuthor = (track.author || '').replace(/\s+/g, ' ').trim();
-        const displayLinkText =
-          cleanAuthor && !cleanTitle.toLowerCase().includes(cleanAuthor.toLowerCase())
-            ? `${cleanTitle} by ${cleanAuthor}`
-            : cleanTitle;
+          const theme = resolvePlatformTheme(track);
+          const displayUrl = (track.raw as Record<string, string>)?.originalYoutubeUrl || track.url;
+          const cleanTitle = track.title.replace(/\s+/g, ' ').trim();
+          const cleanAuthor = (track.author || '').replace(/\s+/g, ' ').trim();
+          const displayLinkText =
+            cleanAuthor && !cleanTitle.toLowerCase().includes(cleanAuthor.toLowerCase())
+              ? `${cleanTitle} by ${cleanAuthor}`
+              : cleanTitle;
 
-        if (searchResult.hasPlaylist() && searchResult.playlist) {
-          if ('send' in message.channel) {
-            await message.channel.send({
-              embeds: [
-                new EmbedBuilder()
-                  .setColor(BRAND_COLORS.MERPATI_DARK)
-                  .setDescription(
-                    `${theme.emoji} Added **${searchResult.tracks.length} tracks** from **[${searchResult.playlist.title}](${searchResult.playlist.url || displayUrl})**`
-                  ),
-              ],
-            });
+          if (searchResult.hasPlaylist() && searchResult.playlist) {
+            if ('send' in message.channel) {
+              await message.channel.send({
+                embeds: [
+                  new EmbedBuilder()
+                    .setColor(BRAND_COLORS.MERPATI_DARK)
+                    .setDescription(
+                      `${theme.emoji} Added **${searchResult.tracks.length} tracks** from **[${searchResult.playlist.title}](${searchResult.playlist.url || displayUrl})**`
+                    ),
+                ],
+              });
+            }
+          } else if (wasPlaying) {
+            if ('send' in message.channel) {
+              await message.channel.send({
+                embeds: [
+                  new EmbedBuilder()
+                    .setColor(BRAND_COLORS.MERPATI_DARK)
+                    .setDescription(`${theme.emoji} Added **[${displayLinkText}](${displayUrl})** to the queue`),
+                ],
+              });
+            }
           }
-        } else if (wasPlaying) {
-          if ('send' in message.channel) {
-            await message.channel.send({
-              embeds: [
-                new EmbedBuilder()
-                  .setColor(BRAND_COLORS.MERPATI_DARK)
-                  .setDescription(`${theme.emoji} Added **[${displayLinkText}](${displayUrl})** to the queue`),
-              ],
-            });
-          }
+        } catch (playErr) {
+          console.error('❌ [Prefix Play Execution Error]:', playErr);
+          await message.reply({
+            embeds: [
+              new EmbedBuilder()
+                .setColor(BRAND_COLORS.MERPATI_DARK)
+                .setDescription('❌ Gagal memutar lagu tersebut karena masalah koneksi audio.'),
+            ],
+          });
         }
         return;
       }

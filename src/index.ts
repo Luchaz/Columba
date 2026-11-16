@@ -3,10 +3,23 @@ import dns from 'dns';
 import path from 'path';
 import fs from 'fs';
 import http from 'http';
+import { Agent, setGlobalDispatcher } from 'undici';
 
-// Pastikan resolusi DNS mendahulukan IPv4 untuk mencegah timeout gateway di Railway/Cloud
+// 1. Pastikan resolusi DNS mendahulukan IPv4 untuk mencegah timeout gateway di Railway/Cloud
 try {
   dns.setDefaultResultOrder('ipv4first');
+} catch {}
+
+// 2. Tingkatkan limit maxHeaderSize undici ke 64KB untuk mencegah HeadersOverflowError saat fetch YouTube
+try {
+  setGlobalDispatcher(
+    new Agent({
+      maxHeaderSize: 65536,
+      connect: {
+        timeout: 10000,
+      },
+    })
+  );
 } catch {}
 
 import { Client, Collection, GatewayIntentBits } from 'discord.js';

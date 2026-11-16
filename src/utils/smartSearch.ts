@@ -57,7 +57,7 @@ export function isUrl(input: string): boolean {
 /**
  * Mengambil metadata resmi video YouTube menggunakan YouTube oEmbed API publik (bebas blokir IP Cloud & 0 API Key)
  */
-async function fetchYouTubeOEmbed(youtubeUrl: string): Promise<{
+export async function fetchYouTubeOEmbed(youtubeUrl: string): Promise<{
   title: string;
   author_name: string;
   thumbnail_url: string;
@@ -100,17 +100,22 @@ export async function smartSearch(
 ): Promise<SearchResult> {
   const query = rawQuery.trim();
 
-  // 1. Jika query adalah URL YouTube langsung -> coba cari langsung dengan YouTube Extractor
+  // 1. Jika query adalah URL YouTube langsung -> coba cari langsung dengan YouTube Extractor (dengan batas waktu 5s agar tidak pernah stuck)
   if (isYouTubeUrl(query)) {
     const sanitizedUrl = sanitizeYouTubeUrl(query);
 
     try {
-      const ytResult = await player.search(sanitizedUrl, { requestedBy });
+      const ytResult = await Promise.race([
+        player.search(sanitizedUrl, { requestedBy }),
+        new Promise<SearchResult>((_, reject) =>
+          setTimeout(() => reject(new Error('player.search timeout (5s)')), 5000)
+        ),
+      ]);
       if (ytResult.hasTracks()) {
         return ytResult;
       }
     } catch {
-      // Fallback ke oEmbed jika direct query bermasalah
+      // Fallback ke oEmbed jika direct query bermasalah atau timeout
     }
 
     const ytMeta = await fetchYouTubeOEmbed(sanitizedUrl);

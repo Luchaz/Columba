@@ -9,7 +9,7 @@ import { SoundCloudExtractor } from '@discord-player/extractor';
 import { Ytdl, createPoTokenProvider } from '@distube/ytdl-core';
 import YouTube, { Video } from 'youtube-sr';
 import { PassThrough, Readable } from 'stream';
-import { sanitizeYouTubeUrl } from '../utils/smartSearch';
+import { fetchYouTubeOEmbed, sanitizeYouTubeUrl } from '../utils/smartSearch';
 
 let ytdlInstance: Ytdl | null = null;
 let poTokenProviderPromise: Promise<any> | null = null;
@@ -259,7 +259,12 @@ export class ModernYouTubeExtractor extends BaseExtractor {
 
       // A. Coba ambil metadata langsung via YouTube.getVideo (youtube-sr) - paling cepat, stabil & anti-blokir IP Cloud
       try {
-        const v = await YouTube.getVideo(sanitizedVideoUrl);
+        const v = await Promise.race([
+          YouTube.getVideo(sanitizedVideoUrl),
+          new Promise<null>((_, reject) =>
+            setTimeout(() => reject(new Error('YouTube.getVideo timeout (3s)')), 3000)
+          ),
+        ]);
         if (v && v.title) {
           const track = new Track(this.context.player, {
             title: v.title,
@@ -280,10 +285,38 @@ export class ModernYouTubeExtractor extends BaseExtractor {
         this.context.player.debug(`YouTube.getVideo failed: ${ytSrErr}`);
       }
 
-      // B. Fallback ke ytdl.getInfo jika youtube-sr gagal
+      // B. Fallback cepat ke YouTube oEmbed publik (sangat cepat, 400ms, anti-blokir IP & tidak pernah hang)
+      try {
+        const ytMeta = await fetchYouTubeOEmbed(sanitizedVideoUrl);
+        if (ytMeta && ytMeta.title) {
+          const track = new Track(this.context.player, {
+            title: ytMeta.title,
+            description: ytMeta.title,
+            author: ytMeta.author_name,
+            url: sanitizedVideoUrl,
+            thumbnail: ytMeta.thumbnail_url || '',
+            duration: '0:00',
+            views: 0,
+            requestedBy: context.requestedBy,
+            source: 'youtube',
+            queryType: QueryType.YOUTUBE_VIDEO,
+          });
+          track.extractor = this;
+          return this.createResponse(null, [track]);
+        }
+      } catch (oembedErr) {
+        this.context.player.debug(`fetchYouTubeOEmbed failed: ${oembedErr}`);
+      }
+
+      // C. Fallback ke ytdl.getInfo dengan strict timeout 3500ms agar TIDAK PERNAH STUCK/HANGING!
       try {
         const ytdl = await getYtdl();
-        const info = await ytdl.getInfo(sanitizedVideoUrl);
+        const info = await Promise.race([
+          ytdl.getInfo(sanitizedVideoUrl),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('ytdl.getInfo timed out (3.5s)')), 3500)
+          ),
+        ]);
         const details = info.videoDetails;
         const durationSec = Number(details.lengthSeconds) || 0;
 
