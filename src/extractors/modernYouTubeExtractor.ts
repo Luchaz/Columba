@@ -17,7 +17,7 @@ async function getYtdl(): Promise<Ytdl> {
   if (ytdlInstance) return ytdlInstance;
   const cookie = process.env.YOUTUBE_COOKIE?.trim();
   ytdlInstance = new Ytdl({
-    clients: [Client.Tv, Client.Mweb, Client.WebEmbedded],
+    clients: [Client.WebEmbedded, Client.Tv, Client.Mweb],
     cookie: cookie || undefined,
   });
   return ytdlInstance;
@@ -135,13 +135,19 @@ export function findBestSoundCloudTrack(
   const titleWords = cleanTargetTitle
     .split(/\s+/)
     .map((w) => w.replace(/[^a-z0-9]/gi, ''))
-    .filter((w) => w.length > 2 && !['the', 'and', 'for', 'with', 'from', 'sped', 'slowed', 'reverb'].includes(w));
+    .filter((w) => w.length > 2 && !['the', 'and', 'for', 'with', 'from', 'sped', 'slowed', 'reverb', 'full', 'set', 'live', 'video', 'audio'].includes(w));
+
+  const authorWords = cleanTargetAuthor
+    .split(/\s+/)
+    .map((w) => w.replace(/[^a-z0-9]/gi, ''))
+    .filter((w) => w.length > 2);
 
   const scored: { track: Track; score: number }[] = [];
 
   for (const t of tracks) {
     const tTitle = (t.title || '').toLowerCase();
     const tAuthor = (t.author || '').toLowerCase();
+    const tFull = `${tTitle} ${tAuthor}`;
 
     // 1. Cek durasi minimal (abaikan snippet/preview 30 detik SoundCloud)
     const tSec = t.durationMS ? Math.round(t.durationMS / 1000) : 0;
@@ -155,13 +161,20 @@ export function findBestSoundCloudTrack(
     );
     if (hasDisallowedWord) continue;
 
-    // 3. Harus cocok minimal 1 kata penting dari judul lagu agar tidak memutar lagu orang lain
-    if (titleWords.length > 0) {
-      const matchesTitleWord = titleWords.some((w) => tTitle.includes(w));
-      if (!matchesTitleWord) continue;
+    // 3. Verifikasi Artis: Jika targetAuthor diketahui, minimal 1 kata nama artis WAJIB ada di author atau title SoundCloud
+    if (authorWords.length > 0) {
+      const matchesAuthor = authorWords.some((w) => tFull.includes(w));
+      if (!matchesAuthor) continue;
     }
 
-    // 4. Cek kesesuaian durasi agar tidak memutar preview atau loop
+    // 4. Verifikasi Judul: Minimal 50% kata penting judul lagu harus cocok agar tidak memutar lagu lain
+    if (titleWords.length > 0) {
+      const matchCount = titleWords.filter((w) => tTitle.includes(w)).length;
+      const ratio = matchCount / titleWords.length;
+      if (ratio < 0.5) continue;
+    }
+
+    // 5. Cek kesesuaian durasi agar tidak memutar preview atau loop
     if (targetSec > 0 && tSec > 0) {
       const diff = Math.abs(tSec - targetSec);
       if (diff > 45) continue;
@@ -261,35 +274,7 @@ export class ModernYouTubeExtractor extends BaseExtractor {
     if (/^(https?:\/\/)?(www\.|m\.|music\.)?(youtube\.com|youtu\.be)\/.+$/i.test(cleanUrl)) {
       const sanitizedVideoUrl = sanitizeYouTubeUrl(cleanUrl);
 
-      // A. Coba ambil metadata langsung via YouTube.getVideo (youtube-sr) - paling cepat, stabil & anti-blokir IP Cloud
-      try {
-        const v = await Promise.race([
-          YouTube.getVideo(sanitizedVideoUrl),
-          new Promise<null>((_, reject) =>
-            setTimeout(() => reject(new Error('YouTube.getVideo timeout (3s)')), 3000)
-          ),
-        ]);
-        if (v && v.title) {
-          const track = new Track(this.context.player, {
-            title: v.title,
-            description: v.title,
-            author: v.channel?.name || 'YouTube',
-            url: v.url || sanitizedVideoUrl,
-            thumbnail: v.thumbnail?.url || '',
-            duration: v.durationFormatted || Util.buildTimeCode(Util.parseMS(v.duration || 0)),
-            views: v.views || 0,
-            requestedBy: context.requestedBy,
-            source: 'youtube',
-            queryType: QueryType.YOUTUBE_VIDEO,
-          });
-          track.extractor = this;
-          return this.createResponse(null, [track]);
-        }
-      } catch (ytSrErr) {
-        this.context.player.debug(`YouTube.getVideo failed: ${ytSrErr}`);
-      }
-
-      // B. Fallback cepat ke YouTube oEmbed publik (sangat cepat, 400ms, anti-blokir IP & tidak pernah hang)
+      // A. Prioritas 1: YouTube oEmbed publik (sangat cepat, ~150ms, anti-blokir IP Cloud & 100% akurat)
       try {
         const ytMeta = await fetchYouTubeOEmbed(sanitizedVideoUrl);
         if (ytMeta && ytMeta.title) {
@@ -312,13 +297,41 @@ export class ModernYouTubeExtractor extends BaseExtractor {
         this.context.player.debug(`fetchYouTubeOEmbed failed: ${oembedErr}`);
       }
 
-      // C. Fallback ke ytdl.getInfo dengan strict timeout 3500ms agar TIDAK PERNAH STUCK/HANGING!
+      // B. Fallback 2: Coba via YouTube.getVideo (youtube-sr)
+      try {
+        const v = await Promise.race([
+          YouTube.getVideo(sanitizedVideoUrl),
+          new Promise<null>((_, reject) =>
+            setTimeout(() => reject(new Error('YouTube.getVideo timeout (2.5s)')), 2500)
+          ),
+        ]);
+        if (v && v.title) {
+          const track = new Track(this.context.player, {
+            title: v.title,
+            description: v.title,
+            author: v.channel?.name || 'YouTube',
+            url: v.url || sanitizedVideoUrl,
+            thumbnail: v.thumbnail?.url || '',
+            duration: v.durationFormatted || Util.buildTimeCode(Util.parseMS(v.duration || 0)),
+            views: v.views || 0,
+            requestedBy: context.requestedBy,
+            source: 'youtube',
+            queryType: QueryType.YOUTUBE_VIDEO,
+          });
+          track.extractor = this;
+          return this.createResponse(null, [track]);
+        }
+      } catch (ytSrErr) {
+        this.context.player.debug(`YouTube.getVideo failed: ${ytSrErr}`);
+      }
+
+      // C. Fallback 3: ytdl.getInfo dengan timeout 4000ms
       try {
         const ytdl = await getYtdl();
         const info = await Promise.race([
           ytdl.getInfo(sanitizedVideoUrl),
           new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('ytdl.getInfo timed out (3.5s)')), 3500)
+            setTimeout(() => reject(new Error('ytdl.getInfo timed out (4s)')), 4000)
           ),
         ]);
         const details = info.videoDetails;
@@ -379,10 +392,9 @@ export class ModernYouTubeExtractor extends BaseExtractor {
 
   /**
    * Mengunduh audio YouTube dengan proteksi verifikasi chunk pertama.
-   * Jika terkena IP-block/403 dari datacenter cloud atau tidak menghasilkan data dalam 2.5s,
-   * stream otomatis dihentikan dan memicu fallback instan.
+   * Timeout default 18s untuk stabilitas jaringan datacenter cloud pada video berdurasi panjang (konser/playlist).
    */
-  private async downloadYouTubeVerified(streamUrl: string, timeoutMs = 2500): Promise<Readable> {
+  private async downloadYouTubeVerified(streamUrl: string, timeoutMs = 18000): Promise<Readable> {
     const ytdl = await getYtdl();
     return new Promise(async (resolve, reject) => {
       let settled = false;
@@ -456,7 +468,7 @@ export class ModernYouTubeExtractor extends BaseExtractor {
           console.log(`✅ [AudioEngine]: Terhubung ke SoundCloud resmi: "${bestTrack.title}" by "${bestTrack.author}" (${bestTrack.duration})`);
           return await scExt.stream(bestTrack);
         } else {
-          console.warn(`⚠️ [AudioEngine]: Hasil SoundCloud untuk "${searchQuery}" ditolak karena semua versi remix/bootleg/tidak resmi.`);
+          console.warn(`⚠️ [AudioEngine]: Hasil SoundCloud untuk "${searchQuery}" ditolak karena tidak ada versi resmi yang cocok.`);
         }
       }
     } catch (scErr) {
@@ -468,16 +480,22 @@ export class ModernYouTubeExtractor extends BaseExtractor {
   async stream(track: Track): Promise<Readable | string> {
     const streamUrl = sanitizeYouTubeUrl(track.url);
 
-    // 1. Coba stream via YouTube dengan verifikasi penerimaan chunk data (timeout 10s untuk kestabilan cloud)
+    // 1. Coba stream via YouTube dengan verifikasi penerimaan chunk data (timeout 18s untuk kestabilan cloud)
     try {
       console.log(`📡 [AudioEngine]: Memulai stream YouTube untuk "${track.title}"...`);
-      const ytStream = await this.downloadYouTubeVerified(streamUrl, 10000);
+      const ytStream = await this.downloadYouTubeVerified(streamUrl, 18000);
       return ytStream;
     } catch (ytErr) {
-      console.warn(`⚠️ [AudioEngine]: YouTube stream tidak merespons (${(ytErr as Error)?.message || ytErr}). Beralih ke SoundCloud tersaring...`);
+      console.warn(`⚠️ [AudioEngine]: YouTube stream gagal (${(ytErr as Error)?.message || ytErr}).`);
     }
 
-    // 2. Fallback instan: SoundCloud Direct CDN Stream dengan FILTER KETAT
+    // PENTING: Jika track berasal dari link YouTube langsung, JANGAN PERNAH fallback ke SoundCloud!
+    // Memutar lagu acak dari SoundCloud membuat audio tidak sinkron dengan video yang diminta user.
+    if (track.source === 'youtube' || /^(https?:\/\/)?(www\.|m\.|music\.)?(youtube\.com|youtu\.be)\/.+$/i.test(track.url)) {
+      throw new Error(`Tidak dapat memutar audio untuk video YouTube "${track.title}". YouTube mungkin membatasi streaming untuk video ini.`);
+    }
+
+    // 2. Fallback HANYA untuk non-direct YouTube (misal audio bridging Spotify): SoundCloud Direct CDN Stream dengan FILTER KETAT
     const author = (track.author || '').trim();
     const cleanTitle = track.title.trim();
 
@@ -517,7 +535,7 @@ export class ModernYouTubeExtractor extends BaseExtractor {
         };
 
         console.log(`✅ [AudioEngine]: Terhubung ke YouTube Studio Resmi: "${bestVideo.title}" (${bestVideo.durationFormatted})`);
-        return await this.downloadYouTubeVerified(bestVideo.url, 10000);
+        return await this.downloadYouTubeVerified(bestVideo.url, 18000);
       }
     } catch (error) {
       console.warn(`⚠️ [AudioEngine]: YouTube bridge stream gagal (${(error as Error)?.message || error}). Beralih ke fallback tersaring di SoundCloud...`);
