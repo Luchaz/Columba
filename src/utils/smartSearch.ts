@@ -108,10 +108,20 @@ export async function fetchYouTubeOEmbed(youtubeUrl: string): Promise<{
 }
 
 /**
+ * Menormalisasi query pencarian teks dari kata pengantar/penghubung bahasa Indonesia
+ * Contoh: "stupid dari treasure" -> "stupid treasure", "lagu run bts" -> "run bts"
+ */
+export function normalizeSearchQuery(rawQuery: string): string {
+  let q = rawQuery.trim();
+  q = q.replace(/\b(lagu|dari|oleh|ciptaan|nyanyian)\b/gi, ' ');
+  return q.replace(/\s+/g, ' ').trim();
+}
+
+/**
  * Smart Multi-Source Search & Bridging:
  * - Link Spotify (Track / Album / Playlist): Ekstraksi metadata Spotify & bridging audio otomatis.
  * - Link YouTube (youtu.be / youtube.com): Ambil metadata asli YouTube via oEmbed + bridging audio anti-blokir IP.
- * - Judul Lagu Biasa: Pencarian langsung cepat.
+ * - Judul Lagu Biasa: Prioritas pencarian resmi YouTube HQ + normalisasi bahasa Indonesia.
  */
 export async function smartSearch(
   player: Player,
@@ -147,6 +157,7 @@ export async function smartSearch(
       try {
         const searchResult = await player.search(bridgeQuery, {
           requestedBy,
+          searchEngine: QueryType.YOUTUBE_SEARCH,
         });
 
         if (searchResult.hasTracks()) {
@@ -190,24 +201,63 @@ export async function smartSearch(
     }
   }
 
-  // 2. Link Spotify, SoundCloud, Apple Music, atau Judul Lagu Teks Biasa
-  const result = await player.search(query, {
-    requestedBy,
-  });
+  // 2. Jika query adalah URL selain YouTube (misal Spotify, SoundCloud, Apple Music)
+  if (isUrl(query)) {
+    const result = await player.search(query, {
+      requestedBy,
+    });
 
-  // Perbaiki URL per-lagu untuk Spotify Playlist agar masing-masing punya link track Spotify asli
-  if (result.hasTracks()) {
-    for (const track of result.tracks) {
-      const rawSource = (track.raw as Record<string, any>)?.source;
-      const uri: string | undefined = rawSource?.uri;
-      if (uri && uri.startsWith('spotify:track:')) {
-        const trackId = uri.split(':')[2];
-        if (trackId) {
-          track.url = `https://open.spotify.com/track/${trackId}`;
+    // Perbaiki URL per-lagu untuk Spotify Playlist agar masing-masing punya link track Spotify asli
+    if (result.hasTracks()) {
+      for (const track of result.tracks) {
+        const rawSource = (track.raw as Record<string, any>)?.source;
+        const uri: string | undefined = rawSource?.uri;
+        if (uri && uri.startsWith('spotify:track:')) {
+          const trackId = uri.split(':')[2];
+          if (trackId) {
+            track.url = `https://open.spotify.com/track/${trackId}`;
+          }
         }
       }
     }
+
+    return result;
   }
 
-  return result;
+  // 3. Query adalah Judul Lagu Teks Biasa (Bukan URL) -> Cari dengan prioritas YouTube Official Search
+  const cleanQ = normalizeSearchQuery(query);
+
+  try {
+    const ytResult = await player.search(cleanQ, {
+      requestedBy,
+      searchEngine: QueryType.YOUTUBE_SEARCH,
+    });
+
+    if (ytResult.hasTracks() && ytResult.tracks.length > 0) {
+      // Re-rank hasil agar lagu studio resmi yang mencakup judul & artis berada paling atas
+      const qWords = cleanQ.toLowerCase().split(/\s+/).filter((w) => w.length > 1);
+      ytResult.tracks.sort((a, b) => {
+        const score = (t: Track) => {
+          const full = `${t.title} ${t.author}`.toLowerCase();
+          let s = 0;
+          for (const w of qWords) {
+            if (full.includes(w)) s += 10;
+          }
+          if (t.author.toLowerCase().includes('topic') || t.author.toLowerCase().includes('vevo')) s += 5;
+          if (t.title.toLowerCase().includes('official')) s += 3;
+          return s;
+        };
+        return score(b) - score(a);
+      });
+
+      return ytResult;
+    }
+  } catch (err) {
+    player.debug(`Direct YouTube text search error, fallback to multi-source: ${err}`);
+  }
+
+  // Fallback pencarian multi-source (SoundCloud / Spotify) jika YouTube search tidak mengembalikan lagu
+  return await player.search(cleanQ || query, {
+    requestedBy,
+  });
 }

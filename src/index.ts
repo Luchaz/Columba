@@ -71,7 +71,16 @@ FFmpeg.spawn = function ({ args = [], shell = false }: { args?: string[]; shell?
     cleanedArgs.push(flag);
   }
 
-  return originalFFmpegSpawn({ args: cleanedArgs, shell });
+  const proc = originalFFmpegSpawn({ args: cleanedArgs, shell });
+  if (proc.stderr) {
+    proc.stderr.on('data', (d: Buffer) => {
+      const msg = d.toString();
+      if (msg.includes('Error') || msg.includes('403') || msg.includes('Connection refused')) {
+        console.warn('⚠️ [FFmpeg stderr]:', msg.trim().slice(0, 250));
+      }
+    });
+  }
+  return proc;
 };
 
 async function bootstrap() {

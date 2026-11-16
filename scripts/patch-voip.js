@@ -11,8 +11,8 @@ if (!fs.existsSync(voipPath)) {
 let voip = fs.readFileSync(voipPath, 'utf8');
 
 // Idempotency check: only patch once
-if (voip.includes('__DAVE_E2EE_FINAL_V8__')) {
-  console.log('ℹ️ [patch-voip]: discord-voip DAVE E2EE patch is already applied (v8).');
+if (voip.includes('__DAVE_E2EE_FINAL_V9__')) {
+  console.log('ℹ️ [patch-voip]: discord-voip DAVE E2EE patch is already applied (v9).');
   process.exit(0);
 }
 
@@ -174,10 +174,25 @@ if (voip.includes(targetAudioLoop)) {
   console.log('✅ [patch-voip]: Patched prepareNextAudioFrame resilience.');
 }
 
+// 7. Patch maxMissedFrames from 5 (100ms) to 250 (5000ms) to prevent audio cut-off during network buffering
+const targetMissedFrames = `    this.behaviors = {
+      noSubscriber: "pause" /* Pause */,
+      maxMissedFrames: 5,`;
+
+const replaceMissedFrames = `    this.behaviors = {
+      noSubscriber: "pause" /* Pause */,
+      maxMissedFrames: 250,`;
+
+if (voip.includes(targetMissedFrames)) {
+  voip = voip.replace(targetMissedFrames, replaceMissedFrames);
+  modified = true;
+  console.log('✅ [patch-voip]: Patched maxMissedFrames to 250 (5000ms resilience).');
+}
+
 if (modified) {
-  voip = '/* __DAVE_E2EE_FINAL_V8__ */\n' + voip;
+  voip = '/* __DAVE_E2EE_FINAL_V9__ */\n' + voip.replace(/\/\* __DAVE_E2EE_FINAL_V\d+__ \*\/\n/g, '');
   fs.writeFileSync(voipPath, voip, 'utf8');
-  console.log('🎉 [patch-voip]: Successfully applied all DAVE E2EE fixes to discord-voip!');
+  console.log('🎉 [patch-voip]: Successfully applied all DAVE E2EE and AudioPlayer fixes to discord-voip!');
 } else {
   console.log('ℹ️ [patch-voip]: No patches were modified.');
 }

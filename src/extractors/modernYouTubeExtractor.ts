@@ -6,28 +6,16 @@ import {
   Util,
 } from 'discord-player';
 import { SoundCloudExtractor } from '@discord-player/extractor';
-import { Ytdl, createPoTokenProvider } from '@distube/ytdl-core';
+import { Ytdl } from '@distube/ytdl-core';
 import YouTube, { Video } from 'youtube-sr';
 import { PassThrough, Readable } from 'stream';
 import { cleanBridgeQuery, fetchYouTubeOEmbed, sanitizeYouTubeUrl } from '../utils/smartSearch';
 
 let ytdlInstance: Ytdl | null = null;
-let poTokenProviderPromise: Promise<any> | null = null;
 
 async function getYtdl(): Promise<Ytdl> {
   if (ytdlInstance) return ytdlInstance;
-  if (!poTokenProviderPromise) {
-    poTokenProviderPromise = createPoTokenProvider().catch((err) => {
-      console.warn('⚠️ [AudioEngine]: createPoTokenProvider fallback to basic:', err);
-      return null;
-    });
-  }
-  const getPoToken = await poTokenProviderPromise;
-  if (getPoToken) {
-    ytdlInstance = new Ytdl({ getPoToken });
-  } else {
-    ytdlInstance = new Ytdl();
-  }
+  ytdlInstance = new Ytdl();
   return ytdlInstance;
 }
 
@@ -397,7 +385,7 @@ export class ModernYouTubeExtractor extends BaseExtractor {
       try {
         const rawStream = await ytdl.download(streamUrl, {
           quality: 'highestaudio',
-          filter: { hasAudio: true, hasVideo: false },
+          filter: (f: any) => Boolean(f.hasAudio && !f.hasVideo),
           highWaterMark: 1024 * 1024 * 2,
         });
 
@@ -528,7 +516,7 @@ export class ModernYouTubeExtractor extends BaseExtractor {
         return await this.downloadYouTubeVerified(bestVideo.url, 10000);
       }
     } catch (error) {
-      this.context.player.debug(`ModernYouTubeExtractor YouTube bridge error: ${error}`);
+      console.warn(`⚠️ [AudioEngine]: YouTube bridge stream gagal (${(error as Error)?.message || error}). Beralih ke fallback tersaring di SoundCloud...`);
     }
 
     // 2. FALLBACK CADANGAN: SoundCloud dengan STRICT ACCURACY FILTER
