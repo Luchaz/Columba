@@ -48,9 +48,15 @@ if (!process.env.FFMPEG_PATH) {
 const originalFFmpegSpawn = FFmpeg.spawn.bind(FFmpeg);
 FFmpeg.spawn = function ({ args = [], shell = false }: { args?: string[]; shell?: boolean } = {}) {
   const cleanedArgs: string[] = [];
+  let hasUserAgent = false;
+
   for (let i = 0; i < args.length; i++) {
     const flag = args[i];
     const nextVal = args[i + 1];
+
+    if (flag === '-user_agent' || flag === '-user-agent') {
+      hasUserAgent = true;
+    }
 
     // Hapus flag -ss yang bernilai 0, undefined, atau NaN karena merusak pembacaan header init.mp4 pada HLS stream
     if (
@@ -63,7 +69,14 @@ FFmpeg.spawn = function ({ args = [], shell = false }: { args?: string[]; shell?
 
     // Ganti -analyzeduration 0 menjadi -analyzeduration 100000 agar tidak exit 0-byte tapi juga tidak blocking 5 detik
     if (flag === '-analyzeduration' && nextVal === '0') {
-      cleanedArgs.push('-analyzeduration', '100000');
+      cleanedArgs.push('-analyzeduration', '100000', '-probesize', '100000');
+      i++;
+      continue;
+    }
+
+    // Ubah loglevel 0 menjadi warning agar jika terjadi error dari decoder, tetap tercatat di log
+    if (flag === '-loglevel' && nextVal === '0') {
+      cleanedArgs.push('-loglevel', 'warning');
       i++;
       continue;
     }
@@ -71,12 +84,27 @@ FFmpeg.spawn = function ({ args = [], shell = false }: { args?: string[]; shell?
     cleanedArgs.push(flag);
   }
 
+  // Jika input berupa remote URL (HTTP/HTTPS) dan belum ada user-agent, sisipkan browser User-Agent di awal
+  const hasHttpInput = cleanedArgs.some((arg) => /^https?:\/\//i.test(arg));
+  if (hasHttpInput && !hasUserAgent) {
+    cleanedArgs.unshift(
+      '-user_agent',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
+    );
+  }
+
   const proc = originalFFmpegSpawn({ args: cleanedArgs, shell });
   if (proc.stderr) {
     proc.stderr.on('data', (d: Buffer) => {
       const msg = d.toString();
-      if (msg.includes('Error') || msg.includes('403') || msg.includes('Connection refused')) {
-        console.warn('⚠️ [FFmpeg stderr]:', msg.trim().slice(0, 250));
+      if (
+        msg.includes('Error') ||
+        msg.includes('error') ||
+        msg.includes('403') ||
+        msg.includes('Connection refused') ||
+        msg.includes('Failed')
+      ) {
+        console.warn('⚠️ [FFmpeg stderr]:', msg.trim().slice(0, 300));
       }
     });
   }

@@ -6,7 +6,7 @@ import {
   Util,
 } from 'discord-player';
 import { SoundCloudExtractor } from '@discord-player/extractor';
-import { Ytdl } from '@distube/ytdl-core';
+import { Ytdl, Client } from '@distube/ytdl-core';
 import YouTube, { Video } from 'youtube-sr';
 import { PassThrough, Readable } from 'stream';
 import { cleanBridgeQuery, fetchYouTubeOEmbed, sanitizeYouTubeUrl } from '../utils/smartSearch';
@@ -15,7 +15,11 @@ let ytdlInstance: Ytdl | null = null;
 
 async function getYtdl(): Promise<Ytdl> {
   if (ytdlInstance) return ytdlInstance;
-  ytdlInstance = new Ytdl();
+  const cookie = process.env.YOUTUBE_COOKIE?.trim();
+  ytdlInstance = new Ytdl({
+    clients: [Client.Tv, Client.Mweb, Client.WebEmbedded],
+    cookie: cookie || undefined,
+  });
   return ytdlInstance;
 }
 
