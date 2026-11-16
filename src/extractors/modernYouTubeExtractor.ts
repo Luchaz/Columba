@@ -9,7 +9,7 @@ import { SoundCloudExtractor } from '@discord-player/extractor';
 import { Ytdl, createPoTokenProvider } from '@distube/ytdl-core';
 import YouTube, { Video } from 'youtube-sr';
 import { PassThrough, Readable } from 'stream';
-import { fetchYouTubeOEmbed, sanitizeYouTubeUrl } from '../utils/smartSearch';
+import { cleanBridgeQuery, fetchYouTubeOEmbed, sanitizeYouTubeUrl } from '../utils/smartSearch';
 
 let ytdlInstance: Ytdl | null = null;
 let poTokenProviderPromise: Promise<any> | null = null;
@@ -139,23 +139,40 @@ export function findBestSoundCloudTrack(
   const cleanTargetTitle = targetTitle.toLowerCase().replace(/[\(\[\{].*?[\)\]\}]/g, '').trim();
   const cleanTargetAuthor = targetAuthor.toLowerCase().replace(/[\(\[\{].*?[\)\]\}]/g, '').trim();
 
+  // Ambil kata-kata penting dari targetTitle (panjang > 2 huruf, abaikan stop words)
+  const titleWords = cleanTargetTitle
+    .split(/\s+/)
+    .map((w) => w.replace(/[^a-z0-9]/gi, ''))
+    .filter((w) => w.length > 2 && !['the', 'and', 'for', 'with', 'from', 'sped', 'slowed', 'reverb'].includes(w));
+
   const scored: { track: Track; score: number }[] = [];
 
   for (const t of tracks) {
     const tTitle = (t.title || '').toLowerCase();
     const tAuthor = (t.author || '').toLowerCase();
 
-    // 1. Cek kata terlarang (remix, slowed, reverb, bootleg, dll)
+    // 1. Cek durasi minimal (abaikan snippet/preview 30 detik SoundCloud)
+    const tSec = t.durationMS ? Math.round(t.durationMS / 1000) : 0;
+    if (tSec > 0 && tSec <= 45 && targetSec > 60) {
+      continue; // Buang preview 30 detik
+    }
+
+    // 2. Cek kata terlarang (remix, slowed, reverb, bootleg, dll)
     const hasDisallowedWord = UNWANTED_KEYWORDS.some(
       (w) => !allowedKeywords.includes(w) && tTitle.includes(w)
     );
     if (hasDisallowedWord) continue;
 
-    // 2. Cek kesesuaian durasi agar tidak memutar preview atau loop
-    const tSec = t.durationMS ? Math.round(t.durationMS / 1000) : 0;
+    // 3. Harus cocok minimal 1 kata penting dari judul lagu agar tidak memutar lagu orang lain
+    if (titleWords.length > 0) {
+      const matchesTitleWord = titleWords.some((w) => tTitle.includes(w));
+      if (!matchesTitleWord) continue;
+    }
+
+    // 4. Cek kesesuaian durasi agar tidak memutar preview atau loop
     if (targetSec > 0 && tSec > 0) {
       const diff = Math.abs(tSec - targetSec);
-      if (diff > 40) continue;
+      if (diff > 45) continue;
     }
 
     let score = 100;
@@ -182,13 +199,8 @@ export function findBestSoundCloudTrack(
     return scored[0].track;
   }
 
-  // Fallback bersih: cari yang tidak mengandung remix/slowed/reverb/bootleg
-  const cleanFallback = tracks.find((t) => {
-    const s = (t.title || '').toLowerCase();
-    return !UNWANTED_KEYWORDS.some((w) => s.includes(w));
-  });
-
-  return cleanFallback || null;
+  // Jika tidak ada lagu SoundCloud yang benar-benar cocok, tolak daripada memutar lagu salah/snippet!
+  return null;
 }
 
 export class ModernYouTubeExtractor extends BaseExtractor {
@@ -464,10 +476,10 @@ export class ModernYouTubeExtractor extends BaseExtractor {
   async stream(track: Track): Promise<Readable | string> {
     const streamUrl = sanitizeYouTubeUrl(track.url);
 
-    // 1. Coba stream via YouTube dengan verifikasi penerimaan chunk data
+    // 1. Coba stream via YouTube dengan verifikasi penerimaan chunk data (timeout 10s untuk kestabilan cloud)
     try {
       console.log(`📡 [AudioEngine]: Memulai stream YouTube untuk "${track.title}"...`);
-      const ytStream = await this.downloadYouTubeVerified(streamUrl, 3000);
+      const ytStream = await this.downloadYouTubeVerified(streamUrl, 10000);
       return ytStream;
     } catch (ytErr) {
       console.warn(`⚠️ [AudioEngine]: YouTube stream tidak merespons (${(ytErr as Error)?.message || ytErr}). Beralih ke SoundCloud tersaring...`);
@@ -488,16 +500,15 @@ export class ModernYouTubeExtractor extends BaseExtractor {
   async bridge(track: Track, sourceExtractor?: any): Promise<Readable | string | null> {
     const author = (track.author || '').trim();
     const title = track.title.trim();
-    const cleanTitle = title.replace(/[\(\[\{].*?[\)\]\}]/g, '').trim() || title;
 
     // 1. PRIORITAS UTAMA: Bridging ke YouTube Official Studio Track
-    // YouTube memiliki channel resmi - Topic / VEVO dari label rekaman yang 100% akurat sesuai lagu asli
+    // Bersihkan operator minus/koma agar YouTube search menemukan video resmi studio dengan 100% akurasi
     try {
       const query = sourceExtractor?.createBridgeQuery
         ? sourceExtractor.createBridgeQuery(track)
-        : `${author} - ${cleanTitle} official audio`;
+        : cleanBridgeQuery(author, title);
 
-      console.log(`🔍 [AudioEngine]: Mencari audio resmi di YouTube untuk "${author} - ${title}"...`);
+      console.log(`🔍 [AudioEngine]: Mencari audio resmi di YouTube untuk "${author} - ${title}" (Query: "${query}")...`);
       const searchVideos = await YouTube.search(query, { limit: 8, type: 'video' });
       const bestVideo = findBestOfficialVideo(
         searchVideos,
@@ -514,7 +525,7 @@ export class ModernYouTubeExtractor extends BaseExtractor {
         };
 
         console.log(`✅ [AudioEngine]: Terhubung ke YouTube Studio Resmi: "${bestVideo.title}" (${bestVideo.durationFormatted})`);
-        return await this.downloadYouTubeVerified(bestVideo.url, 3000);
+        return await this.downloadYouTubeVerified(bestVideo.url, 10000);
       }
     } catch (error) {
       this.context.player.debug(`ModernYouTubeExtractor YouTube bridge error: ${error}`);
@@ -523,6 +534,7 @@ export class ModernYouTubeExtractor extends BaseExtractor {
     // 2. FALLBACK CADANGAN: SoundCloud dengan STRICT ACCURACY FILTER
     // Hanya jika YouTube tidak dapat diakses dan HANYA lagu yang lolos filter keaslian studio
     console.warn(`⚠️ [AudioEngine]: YouTube bridge tidak tersedia. Mencoba fallback tersaring di SoundCloud...`);
+    const cleanTitle = title.replace(/[\(\[\{].*?[\)\]\}]/g, '').trim() || title;
     const scStream = await this.getSoundCloudAudio(cleanTitle, author, track.durationMS, track.requestedBy);
     if (scStream) {
       return scStream;

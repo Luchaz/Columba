@@ -3,6 +3,26 @@ import { Player, QueryType, SearchResult, Track } from 'discord-player';
 import { cleanTrackTitle } from './lyricsFinder';
 
 /**
+ * Membersihkan nama artis dan judul lagu dari karakter operator pencarian (- dan +)
+ * agar query pencarian YouTube tidak mengecualikan kata kunci (exclusion filter)
+ */
+export function cleanBridgeQuery(author: string, title: string): string {
+  const cleanA = (author || '')
+    .replace(/^(sped up \+ slowed|slowed \+ reverb|nightcore)[,\s]*/i, '')
+    .replace(/[-+,\/\\>><<]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const cleanT = (title || '')
+    .replace(/[-+,\/\\>><<]/g, ' ')
+    .replace(/[\(\[\{].*?[\)\]\}]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return `${cleanA} ${cleanT}`.trim();
+}
+
+/**
  * Membersihkan URL YouTube dari parameter tracking (si, feature, pp, dll) & Mix/Radio dinamis (list=RD...)
  * Serta menormalisasi shortlink youtu.be/<id> menjadi https://www.youtube.com/watch?v=<id>
  */

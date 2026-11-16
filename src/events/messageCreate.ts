@@ -112,8 +112,7 @@ export function registerMessageCreateEvent(client: Client) {
               leaveOnEmptyCooldown: leaveCooldown,
               leaveOnEnd: false,
               leaveOnStop: true,
-              bufferingTimeout: 3000, // Buffer 3000ms untuk audio packet stream yang stabil & mencegah audio stuttering/pecah
-              resampler: 48000, // Studio 48kHz sampling rate
+              bufferingTimeout: 250, // Buffering instan & responsif mencegah stuttering audio
               selfDeaf: true,
             },
           });

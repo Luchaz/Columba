@@ -29,6 +29,7 @@ import { FFmpeg } from '@discord-player/ffmpeg';
 import ffmpegPath from 'ffmpeg-static';
 import { BotCommand } from './types/bot';
 import { ModernYouTubeExtractor } from './extractors/modernYouTubeExtractor';
+import { cleanBridgeQuery } from './utils/smartSearch';
 import { registerPlayerEvents } from './events/playerEvents';
 import { registerClientReadyEvent } from './events/ready';
 import { registerInteractionCreateEvent } from './events/interactionCreate';
@@ -60,8 +61,9 @@ FFmpeg.spawn = function ({ args = [], shell = false }: { args?: string[]; shell?
       continue;
     }
 
-    // Hapus -analyzeduration 0 agar FFmpeg dapat membaca codec AAC/Opus dari segmen fMP4 HLS dengan sempurna
+    // Ganti -analyzeduration 0 menjadi -analyzeduration 100000 agar tidak exit 0-byte tapi juga tidak blocking 5 detik
     if (flag === '-analyzeduration' && nextVal === '0') {
+      cleanedArgs.push('-analyzeduration', '100000');
       i++;
       continue;
     }
@@ -121,7 +123,7 @@ async function bootstrap() {
   // Registrasi DefaultExtractors (Spotify, SoundCloud Fallback, Apple Music)
   await player.extractors.loadMulti(DefaultExtractors);
   for (const ext of player.extractors.store.values()) {
-    ext.createBridgeQuery = (track) => `${track.author} - ${track.title} official audio`;
+    ext.createBridgeQuery = (track) => cleanBridgeQuery(track.author, track.title);
   }
   console.log('✅ [AudioEngine]: Seluruh Extractor (Spotify, Modern YouTube HQ Bridge, & Native Stream) siap!');
 
