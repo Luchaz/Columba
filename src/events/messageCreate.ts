@@ -118,7 +118,10 @@ export function registerMessageCreateEvent(client: Client) {
           });
 
           const theme = resolvePlatformTheme(track);
-          const displayUrl = (track.raw as Record<string, string>)?.originalYoutubeUrl || track.url;
+          const displayUrl =
+            (track.raw as Record<string, string>)?.originalSpotifyUrl ||
+            (track.raw as Record<string, string>)?.originalYoutubeUrl ||
+            track.url;
           const cleanTitle = track.title.replace(/\s+/g, ' ').trim();
           const cleanAuthor = (track.author || '').replace(/\s+/g, ' ').trim();
           const displayLinkText =

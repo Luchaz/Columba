@@ -88,7 +88,12 @@ export function resolvePlatformTheme(track: Track): {
   const url = (track.url || '').toLowerCase();
   const raw = (track.raw || {}) as Record<string, unknown>;
 
-  if (source.includes('spotify') || url.includes('spotify.com')) {
+  if (
+    source.includes('spotify') ||
+    url.includes('spotify.com') ||
+    Boolean(raw.isPodcast) ||
+    Boolean(raw.originalSpotifyUrl)
+  ) {
     return {
       name: 'Spotify',
       color: BRAND_COLORS.MERPATI_DARK,
@@ -172,7 +177,7 @@ export function createNowPlayingPayload(
 ) {
   const theme = resolvePlatformTheme(track);
   const raw = (track.raw || {}) as Record<string, string>;
-  const trackUrl = raw.originalYoutubeUrl || track.url;
+  const trackUrl = raw.originalSpotifyUrl || raw.originalYoutubeUrl || track.url;
   const cleanTitle = track.title.replace(/\s+/g, ' ').trim();
   const cleanAuthor = (track.author || '').replace(/\s+/g, ' ').trim();
 
@@ -212,19 +217,23 @@ export function createQueuePayload(queue: GuildQueue<QueueMetadata>, pageIndex =
             const num = startIdx + i + 1;
             const title = t.title.length > 48 ? `${t.title.slice(0, 45)}...` : t.title;
             const tTheme = resolvePlatformTheme(t);
-            return `\`${String(num).padStart(2, '0')}.\` ${tTheme.emoji} **[${title} by ${t.author}](${t.url})** — \`${t.duration}\``;
+            const tRaw = (t.raw || {}) as Record<string, string>;
+            const tUrl = tRaw.originalSpotifyUrl || tRaw.originalYoutubeUrl || t.url;
+            return `\`${String(num).padStart(2, '0')}.\` ${tTheme.emoji} **[${title} by ${t.author}](${tUrl})** — \`${t.duration}\``;
           })
           .join('\n')
       : '*Antrean berikutnya kosong.*';
 
   const currentTheme = current ? resolvePlatformTheme(current) : null;
+  const curRaw = (current?.raw || {}) as Record<string, string>;
+  const curUrl = curRaw.originalSpotifyUrl || curRaw.originalYoutubeUrl || current?.url || '';
 
   const embed = new EmbedBuilder()
     .setColor(BRAND_COLORS.MERPATI_DARK)
     .setDescription(
       [
         current
-          ? `${currentTheme?.emoji} **Now playing:** **[${current.title} by ${current.author}](${current.url})** (\`${current.duration}\`)`
+          ? `${currentTheme?.emoji} **Now playing:** **[${current.title} by ${current.author}](${curUrl})** (\`${current.duration}\`)`
           : '*Tidak ada lagu yang sedang diputar.*',
         '',
         `**Queue (${tracks.length} tracks):**`,
