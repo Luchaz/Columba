@@ -151,7 +151,26 @@ export function registerPlayerEvents(player: Player) {
     console.error(`[Queue Error di Guild ${queue.guild.name}]:`, error.message);
   });
 
-  player.events.on('playerError', (queue: GuildQueue<QueueMetadata>, error, track) => {
+  player.events.on('playerError', async (queue: GuildQueue<QueueMetadata>, error, track) => {
     console.error(`[Player Stream Error untuk "${track.title}"]:`, error.message);
+
+    const channel = queue.metadata?.channel;
+    if (channel && 'send' in channel) {
+      await channel
+        .send({
+          embeds: [
+            new EmbedBuilder()
+              .setColor(BRAND_COLORS.ERROR)
+              .setDescription(
+                `❌ Gagal memutar audio untuk **[${track.title}](${track.url})**. Sumber audio dibatasi atau tidak dapat diakses.`
+              ),
+          ],
+        })
+        .catch(() => null);
+    }
+
+    if (queue.tracks.size === 0 && !queue.isPlaying()) {
+      await disableOldPlayerMessage(queue, track);
+    }
   });
 }

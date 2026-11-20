@@ -292,6 +292,19 @@ export function findBestPodcastVideo(
 }
 
 /**
+ * Membersihkan judul episode podcast dari prefix nomor episode (Ep. 12, #12, dll)
+ * untuk memperluas pencarian YouTube jika format judul berbeda antara Spotify dan YouTube
+ */
+export function cleanPodcastTitle(title: string): string {
+  return title
+    .replace(/^(ep(isode)?\.?\s*\d+|#\d+|eps?\.?\s*\d+)[\s:\-–—|]*/i, '')
+    .replace(/[\(\[\{].*?[\)\]\}]/g, ' ')
+    .replace(/[-+,\/\\>><<]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
  * Menormalisasi query pencarian teks dari kata pengantar/penghubung bahasa Indonesia
  * Contoh: "stupid dari treasure" -> "stupid treasure", "lagu run bts" -> "run bts"
  */
@@ -383,7 +396,20 @@ export async function smartSearch(
 
         console.log(`🎙️ [PodcastEngine]: Menghubungkan podcast "${meta.show} - ${meta.title}" ke YouTube...`);
         const searchVideos = await YouTube.search(ytBridgeQuery, { limit: 10, type: 'video' });
-        const bestVideo = findBestPodcastVideo(searchVideos, meta.title, meta.show, meta.durationMS);
+        let bestVideo = findBestPodcastVideo(searchVideos, meta.title, meta.show, meta.durationMS);
+
+        // Fallback jika format judul di Spotify dan YouTube memiliki perbedaan penulisan
+        if (!bestVideo) {
+          const cleanTitle = cleanPodcastTitle(meta.title);
+          const cleanShow = meta.show.replace(/\b(podcast|official|show)\b/gi, '').trim();
+          const fallbackQuery = `${cleanTitle} ${cleanShow}`.replace(/\s+/g, ' ').trim();
+
+          if (fallbackQuery && fallbackQuery.toLowerCase() !== ytBridgeQuery.toLowerCase()) {
+            console.log(`🎙️ [PodcastEngine]: Mencoba pencarian alternatif: "${fallbackQuery}"...`);
+            const fallbackVideos = await YouTube.search(fallbackQuery, { limit: 10, type: 'video' });
+            bestVideo = findBestPodcastVideo(fallbackVideos, meta.title, meta.show, meta.durationMS);
+          }
+        }
 
         if (bestVideo) {
           console.log(`✅ [PodcastEngine]: Terhubung ke episode YouTube resmi: "${bestVideo.title}" (${bestVideo.durationFormatted})`);

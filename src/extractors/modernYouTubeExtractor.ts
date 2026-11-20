@@ -6,18 +6,38 @@ import {
   Util,
 } from 'discord-player';
 import { SoundCloudExtractor } from '@discord-player/extractor';
-import { Ytdl, Client } from '@distube/ytdl-core';
+import { Ytdl, Client, createPoTokenProvider, PoTokenProvider } from '@distube/ytdl-core';
 import YouTube, { Video } from 'youtube-sr';
 import { PassThrough, Readable } from 'stream';
 import { cleanBridgeQuery, fetchYouTubeOEmbed, sanitizeYouTubeUrl } from '../utils/smartSearch';
 
 let ytdlInstance: Ytdl | null = null;
+let poTokenProviderPromise: Promise<PoTokenProvider | null> | null = null;
+
+async function getPoTokenProvider(): Promise<PoTokenProvider | null> {
+  if (!poTokenProviderPromise) {
+    poTokenProviderPromise = createPoTokenProvider({ timeoutMs: 25000 }).catch((err) => {
+      console.warn('⚠️ [AudioEngine]: createPoTokenProvider warning:', err?.message || err);
+      return null;
+    });
+  }
+  return poTokenProviderPromise;
+}
 
 async function getYtdl(): Promise<Ytdl> {
   if (ytdlInstance) return ytdlInstance;
   const cookie = process.env.YOUTUBE_COOKIE?.trim();
+  const poProvider = await getPoTokenProvider();
+
   ytdlInstance = new Ytdl({
-    clients: [Client.WebEmbedded, Client.Tv, Client.Mweb],
+    clients: [
+      Client.VisionOS,
+      Client.Tv,
+      Client.Mweb,
+      Client.WebEmbedded,
+      Client.WebMusic,
+    ],
+    getPoToken: poProvider ? (req) => poProvider(req) : undefined,
     cookie: cookie || undefined,
   });
   return ytdlInstance;
